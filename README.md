@@ -1,0 +1,2 @@
+# giftlist-web
+React SPA
