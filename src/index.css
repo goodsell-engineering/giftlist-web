@@ -1,0 +1,11 @@
+/* Minimal reset only. Out of scope for this skeleton: a styling system (see GL-15
+   scope note) — mockups/style.css is the eventual design source of truth. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+}
