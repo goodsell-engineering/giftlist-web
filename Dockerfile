@@ -18,12 +18,17 @@
 # volume is now in, so removing the warm-up below needs no change there. The cost is that the
 # first start on a fresh volume installs from cold rather than from an image layer.
 #
-# WHAT STILL HAS TO LAND FOR THAT RUNTIME INSTALL TO WORK (GL-29): the feed must be mounted so
-# that `file:../local-feed/...` resolves INSIDE the container exactly as it does on the host.
-# /app is the repo, so `..` is `/`, which means the mount must be `../local-feed:/local-feed:ro`
-# — NOT the `/feed` that section suggests for the .NET services. A `file:` specifier is baked
-# into package.json and cannot differ between host and container the way a nuget.config source
-# can, so the two mounts are not interchangeable.
+# WHAT MAKES THAT RUNTIME INSTALL WORK (GL-29, landed): compose mounts the feed so that
+# `file:../local-feed/...` resolves INSIDE the container exactly as it does on the host. /app is
+# the repo, so `..` is `/`, which makes the mount `../local-feed:/local-feed:ro`.
+#
+# That is the same mount every .NET service gets. It did not start that way: GL-29 first mounted
+# the feed at /feed for the .NET services and /local-feed only here, on the assumption that a
+# nuget.config could name an absolute container path even though this repo's `file:` specifier
+# cannot. GL-26 disproved the assumption — NuGet resolves a relative local source against the
+# nuget.config's own directory, so every repo needs the same relative `../local-feed` this one
+# does, and one mount point now serves all five services. See ARCHITECTURE.md "Making the local
+# feed visible to containers"; /feed no longer exists anywhere in the project.
 FROM node:22-alpine
 
 WORKDIR /app
