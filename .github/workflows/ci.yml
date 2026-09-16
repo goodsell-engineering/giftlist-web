@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# GL-30: build + unit test only, extended by the Batch 8 review to explicitly include
+# `npm run test` (GL-19 added Vitest + React Testing Library) alongside typecheck/lint/build —
+# until this workflow, the web suite only ran when a human typed it.
+#
+# package.json depends on "@giftlist/gateway-client": "file:../local-feed/giftlist-gateway-client-0.1.0.tgz",
+# which does not exist on a fresh runner any more than the .NET repos' local-feed packages do —
+# giftlist-gateway owns the protos and publishes this client as an npm tarball
+# (clients/typescript/README.md), so this job checks that repo out as a sibling and builds the
+# tarball from source, same trust boundary as the five .NET repos' own workflows and same reason
+# there is no registry step: nothing to publish to (ARCHITECTURE.md "Packaging: local feed").
+#
+# WHY `npm ci` (STRICT) IS SAFE HERE, VERIFIED NOT ASSUMED: `npm pack` produces a byte-identical
+# tarball across runs from unchanged source (npm normalizes entry timestamps), so the sha512 this
+# job's freshly-built tarball carries matches package-lock.json's pinned "integrity" for
+# @giftlist/gateway-client exactly, whenever clients/typescript's published surface hasn't
+# changed — confirmed by packing it twice locally and diffing both the tarball bytes and the
+# lockfile's own recorded hash. That is what makes `npm ci`'s integrity check a feature here
+# rather than a guaranteed false failure: it passes when the tarball this job built matches what
+# giftlist-web's lockfile expects, and fails loudly — not silently on a different, stale
+# tarball — the moment the two drift, which is exactly the signal a stale lockfile should
+# produce.
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout giftlist-web
+        uses: actions/checkout@v4
+        with:
+          path: giftlist-web
+
+      - name: Checkout giftlist-gateway (sibling, owns the client's protos)
+        uses: actions/checkout@v4
+        with:
+          repository: goodsell-engineering/giftlist-gateway
+          path: giftlist-gateway
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build @giftlist/gateway-client into a job-local feed
+        working-directory: giftlist-gateway/clients/typescript
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          mkdir -p "$GITHUB_WORKSPACE/local-feed"
+          npm pack --pack-destination "$GITHUB_WORKSPACE/local-feed"
+          echo "Packed tarball:"
+          ls -la "$GITHUB_WORKSPACE/local-feed"
+          sha512sum "$GITHUB_WORKSPACE"/local-feed/*.tgz
+
+      # package-lock.json's own "integrity" for @giftlist/gateway-client is the proof this
+      # restored from the tarball this job just built, not some other copy — `npm ci` fails hard
+      # on a mismatch instead of silently accepting a different one (see header comment).
+      - name: Install (npm ci — verifies tarball integrity against package-lock.json)
+        working-directory: giftlist-web
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: giftlist-web
+        run: npm run typecheck
+
+      - name: Lint
+        working-directory: giftlist-web
+        run: npm run lint
+
+      - name: Unit tests
+        working-directory: giftlist-web
+        run: npm run test
+
+      - name: Build
+        working-directory: giftlist-web
+        run: npm run build
