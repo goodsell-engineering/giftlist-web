@@ -1,9 +1,10 @@
 /**
  * A minimal, hand-rolled GraphQL request function for the Gateway's one `/graphql` endpoint
- * (GL-23's `myGiftLists`/`giftList(id)`) — not a client library.
+ * (GL-23's `myGiftLists`/`giftList(id)`, GL-32/GL-33's `sharedGiftList(token)`) — not a client
+ * library.
  *
  * Design decision (GL-24): package.json deliberately gains no GraphQL client dependency (Apollo
- * Client, urql, graphql-request, ...). This SPA issues exactly two named, read-only queries
+ * Client, urql, graphql-request, ...). This SPA issues a small number of named, read-only queries
  * against one endpoint. It has no need for a normalized cache, generated hooks, or optimistic-
  * mutation machinery — mutations here are grpc-web commands, not GraphQL, so there is nothing for
  * a client library's mutation layer to do (see giftlists.proto's own header for why). A full
@@ -14,8 +15,23 @@
  * share-token-scoped for the anonymous guest view (sharing/*), not something the owner-facing
  * pages this file serves ever use.
  *
- * If a third query, a write surface, or an actual caching/dedup requirement shows up later,
- * revisit this decision rather than growing this file into a bespoke client framework.
+ * If a write surface, or an actual caching/dedup requirement shows up later, revisit this
+ * decision rather than growing this file into a bespoke client framework.
+ *
+ * Two entry points, one shared implementation (GL-33):
+ *
+ * - {@link graphqlRequest} — the owner-facing surface, always carries a real JWT.
+ * - {@link graphqlRequestAnonymous} — `sharedGiftList(token)`'s guest surface. A guest has no
+ *   access token at all, and `Authorization: Bearer ` (an empty-string token forced through the
+ *   authenticated entry point) is not an absent header — it is a malformed one that a
+ *   less-careful server might still try to parse, and the whole point of the sharing surface is
+ *   that a well-formed share token is the entire credential (ARCHITECTURE.md "Auth & sharing").
+ *   So this is a sibling function with its own signature (no `accessToken` parameter to forget to
+ *   pass, or to be tempted to pass `""` to) rather than an optional parameter on
+ *   {@link graphqlRequest} — an optional param a caller can omit by accident is exactly the kind
+ *   of one-character mistake that would silently start sending `Authorization: Bearer undefined`
+ *   for the owner-facing calls this file also serves. The two never share a call site, so nothing
+ *   is lost by keeping them syntactically distinct.
  */
 const gatewayUrl = import.meta.env.VITE_GATEWAY_URL ?? "http://localhost:8080";
 const graphqlUrl = `${gatewayUrl}/graphql`;
@@ -55,10 +71,18 @@ interface GraphQlResponseBody<TData> {
   errors?: GraphQlError[];
 }
 
-export async function graphqlRequest<TData>(
-  accessToken: string,
+/**
+ * Shared by both entry points below. `authorizationHeader` is the literal header value (already
+ * `Bearer ...`) or `undefined` — `undefined` here is what actually omits the header from the
+ * request, since `fetch`'s `headers` object only sends the keys it is given. Kept `POST` always:
+ * GL-105 is retiring GET-with-an-operation on `/graphql` in this same batch because a token in a
+ * URL is a leaked capability, and this function is the one place that decision could be
+ * accidentally undone for either caller.
+ */
+async function executeGraphqlRequest<TData>(
   query: string,
-  variables?: Record<string, unknown>,
+  variables: Record<string, unknown> | undefined,
+  authorizationHeader: string | undefined,
 ): Promise<TData> {
   let response: Response;
   try {
@@ -66,7 +90,9 @@ export async function graphqlRequest<TData>(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
+        ...(authorizationHeader
+          ? { Authorization: authorizationHeader }
+          : {}),
       },
       body: JSON.stringify({ query, variables }),
     });
@@ -100,4 +126,25 @@ export async function graphqlRequest<TData>(
   }
 
   return body.data;
+}
+
+/** The owner-facing entry point — always sends a real `Authorization: Bearer <accessToken>`. */
+export async function graphqlRequest<TData>(
+  accessToken: string,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<TData> {
+  return executeGraphqlRequest<TData>(query, variables, `Bearer ${accessToken}`);
+}
+
+/**
+ * The guest entry point — `sharedGiftList(token)` only. Sends no `Authorization` header at all;
+ * see this file's header comment for why that is a sibling function rather than an optional
+ * parameter on {@link graphqlRequest}.
+ */
+export async function graphqlRequestAnonymous<TData>(
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<TData> {
+  return executeGraphqlRequest<TData>(query, variables, undefined);
 }
