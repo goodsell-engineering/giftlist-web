@@ -7,7 +7,10 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 
 import DashboardPage from "./DashboardPage";
-import { AuthContext, type AuthContextValue } from "../../identity/auth/authContext";
+import {
+  AuthContext,
+  type AuthContextValue,
+} from "../../identity/auth/authContext";
 import { fetchMyGiftLists } from "../api/giftListQueries";
 import { createGiftListsClient } from "../api/giftListsClient";
 import type { GiftListProjection } from "../api/giftListQueries";
@@ -33,7 +36,9 @@ const SESSION: AuthContextValue["session"] = {
   accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
 };
 
-function aGiftList(overrides: Partial<GiftListProjection> = {}): GiftListProjection {
+function aGiftList(
+  overrides: Partial<GiftListProjection> = {},
+): GiftListProjection {
   return {
     listId: "list-1",
     ownerId: "owner-1",
@@ -71,10 +76,7 @@ function renderDashboardPage() {
       <MemoryRouter initialEntries={["/dashboard"]}>
         <Routes>
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route
-            path="/lists/:listId"
-            element={<ListDetailPageStub />}
-          />
+          <Route path="/lists/:listId" element={<ListDetailPageStub />} />
         </Routes>
       </MemoryRouter>
     </AuthContext.Provider>,
@@ -127,7 +129,9 @@ describe("DashboardPage", () => {
       aGiftList({
         listId: "list-2",
         name: "Housewarming",
-        items: [{ itemId: "item-1", name: "Mug", description: null, url: null }],
+        items: [
+          { itemId: "item-1", name: "Mug", description: null, url: null },
+        ],
       }),
     ];
     fetchMyGiftListsMock.mockResolvedValue(giftLists);
@@ -366,6 +370,24 @@ describe("DashboardPage", () => {
           expiresAt: timestampFromDate(new Date("2030-03-15T00:00:00Z")),
         }),
       );
+    });
+
+    it("DashboardPage_ShouldShowThePickedDayInTheLocalizedShortFormat_WhenADayIsPicked", async () => {
+      // Arrange — `valueFormat="L"` is dayjs's localizedFormat token; without that plugin
+      // registered the field renders the literal letter "L" after a pick (Batch 43 review, B1).
+      // The RPC payload was right all along, which is why the Kolkata test above never saw it.
+      // jsdom's navigator.language is en-US, so `DatesProvider` resolves the "en" dayjs locale.
+      fetchMyGiftListsMock.mockResolvedValue([]);
+      const user = userEvent.setup({ delay: null });
+      renderDashboardPage();
+      await screen.findByText("You don't have any gift lists yet.");
+
+      // Act
+      await user.click(screen.getByRole("button", { name: "+ New list" }));
+      await selectExpiryDay(user, 15);
+
+      // Assert
+      expect(screen.getByLabelText("Expires")).toHaveTextContent("03/15/2030");
     });
 
     it("DashboardPage_ShouldRejectYesterdaysUtcDate_AndNotCallTheRpc_WhenSubmitted", async () => {

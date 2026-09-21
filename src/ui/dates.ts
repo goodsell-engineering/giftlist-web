@@ -5,6 +5,8 @@
  * those pages — but the source of truth for *how* a calendar date should be formatted is stated
  * once, in this file, from here on.
  */
+import dayjs from "dayjs";
+import localizedFormat from "dayjs/plugin/localizedFormat";
 import "dayjs/locale/en";
 import "dayjs/locale/en-gb";
 import "dayjs/locale/en-au";
@@ -13,6 +15,13 @@ import "dayjs/locale/de";
 import "dayjs/locale/fr";
 import "dayjs/locale/es";
 import "dayjs/locale/nl";
+
+// `DatePickerInput valueFormat="L"` (GL-122) is dayjs's localized short date ("20/06/2030" under
+// en-gb, "06/20/2030" under en). The `L` token only exists once the localizedFormat plugin is
+// registered — nothing else in the app or in @mantine/dates does it, and without it the field
+// renders the literal letter "L" after a pick (Batch 43 review, B1). Registered here, once, in
+// the file that owns date formatting.
+dayjs.extend(localizedFormat);
 
 /**
  * Renders the calendar day `iso` (an ISO-8601 string — `GiftListProjection.expiresAt`'s shape;

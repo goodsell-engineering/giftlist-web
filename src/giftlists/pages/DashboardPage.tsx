@@ -128,7 +128,9 @@ function utcDateString(date: Date): string {
  * guaranteed-failing one (see `isExpiryDateNotInFuture`'s doc comment for the arithmetic).
  */
 function utcDateStringPlusDays(date: Date, days: number): string {
-  return new Date(date.getTime() + days * 86_400_000).toISOString().slice(0, 10);
+  return new Date(date.getTime() + days * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 }
 
 /**
@@ -183,23 +185,40 @@ function GiftListCard({ giftList }: { giftList: GiftListProjection }) {
   }
 
   return (
-    <Card component="li" withBorder radius="lg" shadow="md" p="lg" style={{ listStyle: "none" }}>
+    <Card
+      component="li"
+      withBorder
+      radius="lg"
+      shadow="md"
+      p="lg"
+      style={{ listStyle: "none" }}
+    >
       <Stack gap="sm" h="100%">
-        <Badge color={STATUS_BADGE_COLOR[status]} variant="light" w="fit-content">
-          {STATUS_LABEL[status]}
+        <Badge color={STATUS_BADGE_COLOR[status]} w="fit-content">
+          ● {STATUS_LABEL[status]}
         </Badge>
         <Title order={3} size="h4">
           {giftList.name}
         </Title>
         <Text size="sm" c="var(--gl-text-muted)">
-          {giftList.items.length} {giftList.items.length === 1 ? "item" : "items"} · expires{" "}
+          {giftList.items.length}{" "}
+          {giftList.items.length === 1 ? "item" : "items"} · expires{" "}
           {formatCalendarDate(giftList.expiresAt)}
         </Text>
         <Group gap="xs" mt="auto">
-          <Button component={Link} to={`/lists/${giftList.listId}`} variant="light" size="xs">
+          <Button
+            component={Link}
+            to={`/lists/${giftList.listId}`}
+            variant="light"
+            size="xs"
+          >
             Manage
           </Button>
-          <Button variant="outline" color="gray" size="xs" onClick={() => void handleShare()}>
+          <Button
+            variant="default"
+            size="xs"
+            onClick={() => void handleShare()}
+          >
             {copied ? "Copied!" : "Share"}
           </Button>
         </Group>
@@ -308,7 +327,11 @@ export default function DashboardPage() {
           <Button onClick={() => setIsCreating(true)}>+ New list</Button>
         </Group>
 
-        <Modal opened={isCreating} onClose={closeCreateForm} title="Create a new list">
+        <Modal
+          opened={isCreating}
+          onClose={closeCreateForm}
+          title="Create a new list"
+        >
           <Box
             component="form"
             onSubmit={(event) => void handleCreate(event)}
@@ -387,12 +410,7 @@ export default function DashboardPage() {
           // duplicating it in here as its own button would give two elements the same accessible
           // name for no functional gain, so this card is the mockup's dashed-border treatment
           // around the existing "no lists yet" message rather than a second, separate trigger.
-          <Card
-            withBorder
-            radius="lg"
-            p="xl"
-            style={{ borderStyle: "dashed" }}
-          >
+          <Card withBorder radius="lg" p="xl" style={{ borderStyle: "dashed" }}>
             <Text ta="center" c="var(--gl-text-muted)">
               You don&apos;t have any gift lists yet.
             </Text>
