@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { Center, Loader, Stack, Text } from "@mantine/core";
 
 import { useShareTokenOwnership } from "../hooks/useShareTokenOwnership";
 import ShareOwnerInterstitialPage from "./ShareOwnerInterstitialPage";
@@ -22,6 +23,10 @@ import SharedListPage from "./SharedListPage";
  * `ShareTokenGate`'s `bypassInterstitial` state (see its own doc comment) must not survive a
  * navigation from one share token to another — the `key` below forces a fresh mount instead of
  * carrying that per-token choice over to a list this browser did not just choose to peek at.
+ *
+ * GL-124: the only visual change this story makes here is the "checking" branch, restyled onto a
+ * Mantine `Center`/`Loader`. The ownership decision itself, and which of the two child pages gets
+ * rendered for "owner"/"guest", are unchanged.
  */
 export default function ShareTokenPage() {
   const { shareToken } = useParams<{ shareToken: string }>();
@@ -41,9 +46,14 @@ function ShareTokenGate({ shareToken }: { shareToken: string }) {
 
   if (ownership.status === "checking") {
     return (
-      <main>
-        <p>Loading…</p>
-      </main>
+      <Center component="main" mih="60vh">
+        <Stack align="center" gap="sm">
+          <Loader color="primary" />
+          <Text c="dimmed" size="sm">
+            Loading…
+          </Text>
+        </Stack>
+      </Center>
     );
   }
 
