@@ -19,15 +19,50 @@
  * - An "edit expiry" control the mockup shows: giftlists.proto has exactly five commands
  *   (CreateGiftList/RenameGiftList/DeleteGiftList/AddGiftItem/RemoveGiftItem) and none of them
  *   changes an existing list's expiry. Building that control would mean inventing a command that
- *   doesn't exist on the wire, so it's left out rather than wired to nothing.
+ *   doesn't exist on the wire, so it's left out rather than wired to nothing — the detail card
+ *   below therefore only gets a "Rename" button, not the "Rename"/"Edit expiry" pair the mockup
+ *   draws (GL-123, this restyle: rendering only, not a licence to invent a sixth command).
+ *
+ * Restyled onto Mantine (GL-123) — labels, error copy, the confirm-then-settle behaviour and the
+ * privacy guarantees above are all unchanged from before this story; only the markup changed.
+ * `ListDetail*`-prefixed helpers below are local to this file on purpose, not shared with
+ * DashboardPage's own (differently-named) equivalents (GL-122, same batch) — the two pages
+ * duplicate a small amount of status/label logic rather than reach into each other's internals.
  */
-import { useCallback, useId, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useId,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Box,
+  Button,
+  Center,
+  Code,
+  Collapse,
+  Group,
+  Loader,
+  Paper,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 
 import { useAuth } from "../../identity/auth/useAuth";
 import { useGiftList } from "../hooks/useGiftList";
 import { createGiftListsClient } from "../api/giftListsClient";
 import { describeGiftListsCommandError } from "../api/giftListsErrors";
+import { TopBar, TopBarUserMenu } from "../../ui/TopBar";
+import { Page } from "../../ui/Page";
+import { formatCalendarDate } from "../../ui/dates";
 
 /** Never returned as, or rendered inside, an `<a>` — see the share box below. */
 function shareLinkFor(shareToken: string): string {
@@ -164,6 +199,84 @@ interface LocationState {
 
 const CHANGE_NOT_YET_VISIBLE_MESSAGE =
   "That change hasn't shown up yet. It may still be processing — try refreshing in a moment.";
+
+type ListDetailStatus = "active" | "expiring-soon" | "expired";
+
+const LIST_DETAIL_EXPIRY_WARNING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Mirrors DashboardPage's own status computation (both mockups/dashboard.html and
+ * mockups/list-detail-owner.html agree on the same three states/thresholds) — duplicated locally
+ * rather than imported, since DashboardPage doesn't export it and this file must not reach into a
+ * sibling page's internals (GL-122 owns that file in the same batch). */
+function listDetailStatus(expiresAt: string): ListDetailStatus {
+  const msRemaining = new Date(expiresAt).getTime() - Date.now();
+  if (msRemaining <= 0) {
+    return "expired";
+  }
+  return msRemaining <= LIST_DETAIL_EXPIRY_WARNING_WINDOW_MS
+    ? "expiring-soon"
+    : "active";
+}
+
+const LIST_DETAIL_STATUS_LABEL: Record<ListDetailStatus, string> = {
+  active: "Active",
+  "expiring-soon": "Expiring soon",
+  expired: "Expired",
+};
+
+/** `success`/`yellow`/`danger` per the mockup's `.badge-active`/`.badge-soon`/`.badge-expired` —
+ * "yellow" is Mantine's own built-in scale (GL-123 spec) rather than a fourth hand-tuned theme
+ * colour for a single warning badge. */
+const LIST_DETAIL_STATUS_COLOR: Record<ListDetailStatus, string> = {
+  active: "success",
+  "expiring-soon": "yellow",
+  expired: "danger",
+};
+
+/** The item row's thumb tile. mockups/list-detail-owner.html hand-picks an emoji per item
+ * ("🎧", "📚", "☕"); `GiftItemProjection` carries no icon/category field to choose one from, so
+ * the item's own first initial is the only data-driven fallback available here. */
+function itemThumbLabel(name: string): string {
+  return name.trim().charAt(0).toUpperCase() || "?";
+}
+
+/**
+ * The TopBar + Page chrome shared by every branch below (loading, forbidden, not-found, error,
+ * unresolved and ready) — built once here so all of them get the same "← My lists" link and
+ * avatar rather than each branch inventing its own header.
+ *
+ * `displayName` is `session.userId` (`AuthSession` doesn't carry a real display name yet — see
+ * `TopBarUserMenu`'s own doc comment) rather than something friendlier; this page can't invent
+ * data the session doesn't have.
+ */
+function ListDetailChrome({
+  userId,
+  children,
+}: {
+  userId: string;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <TopBar
+        right={
+          <Group gap={20}>
+            <Anchor
+              component={Link}
+              to="/dashboard"
+              size="sm"
+              c="var(--gl-text-muted)"
+            >
+              ← My lists
+            </Anchor>
+            <TopBarUserMenu displayName={userId} />
+          </Group>
+        }
+      />
+      <Page>{children}</Page>
+    </>
+  );
+}
 
 export default function ListDetailOwnerPage() {
   const { listId } = useParams<{ listId: string }>();
@@ -372,21 +485,27 @@ export default function ListDetailOwnerPage() {
 
   if (state.status === "loading" || state.status === "pending") {
     return (
-      <main>
-        <p>
-          <Link to="/dashboard">← My lists</Link>
-        </p>
-        <p>Loading your gift list…</p>
-      </main>
+      <ListDetailChrome userId={session.userId}>
+        <Center py={64}>
+          <Group gap="sm">
+            <Loader size="sm" />
+            <Text c="var(--gl-text-muted)">Loading your gift list…</Text>
+          </Group>
+        </Center>
+      </ListDetailChrome>
     );
   }
 
   if (state.status === "forbidden") {
     return (
-      <main>
-        <p role="alert">You do not own this gift list.</p>
-        <Link to="/dashboard">← My lists</Link>
-      </main>
+      <ListDetailChrome userId={session.userId}>
+        <Alert role="alert" color="danger" mb="md">
+          You do not own this gift list.
+        </Alert>
+        <Anchor component={Link} to="/dashboard" size="sm">
+          ← My lists
+        </Anchor>
+      </ListDetailChrome>
     );
   }
 
@@ -395,193 +514,346 @@ export default function ListDetailOwnerPage() {
     // flow, so there is no reason to think the read model is still catching up (useGiftList's own
     // doc comment, rule 2). No GL-72-shaped hedging belongs here.
     return (
-      <main>
-        <p role="alert">This list doesn&apos;t exist.</p>
-        <Link to="/dashboard">← My lists</Link>
-      </main>
+      <ListDetailChrome userId={session.userId}>
+        <Alert role="alert" color="danger" mb="md">
+          This list doesn&apos;t exist.
+        </Alert>
+        <Anchor component={Link} to="/dashboard" size="sm">
+          ← My lists
+        </Anchor>
+      </ListDetailChrome>
     );
   }
 
   if (state.status === "error") {
     return (
-      <main>
-        <p role="alert">{state.info.message}</p>
-        <button type="button" onClick={refetch}>
-          Try again
-        </button>
-        <Link to="/dashboard">← My lists</Link>
-      </main>
+      <ListDetailChrome userId={session.userId}>
+        <Alert role="alert" color="danger" mb="md">
+          {state.info.message}
+        </Alert>
+        <Group gap="md">
+          <Button type="button" variant="outline" onClick={refetch}>
+            Try again
+          </Button>
+          <Anchor component={Link} to="/dashboard" size="sm">
+            ← My lists
+          </Anchor>
+        </Group>
+      </ListDetailChrome>
     );
   }
 
   if (state.status === "unresolved") {
     return (
-      <main>
+      <ListDetailChrome userId={session.userId}>
         {/* GL-72 is open: every GiftLists command is fire-and-forget, so a command GiftLists
             later rejects is never reported back to the browser, which by then already holds a
             "successful" response for a list that may never exist — this message says so rather
             than guessing "not found" or "still loading". The ticket number itself stays out of
             the user-facing text (batch-15 review item 2) — it identifies nothing to the person
             reading it. */}
-        <p role="alert">
+        <Alert role="alert" color="yellow" mb="md">
           We can&apos;t find this list yet. It may still be processing, or the
           request that created it may not have gone through — we can&apos;t
           tell those two apart yet.
-        </p>
-        <button type="button" onClick={refetch}>
-          Check again
-        </button>
-        <Link to="/dashboard">← My lists</Link>
-      </main>
+        </Alert>
+        <Group gap="md">
+          <Button type="button" variant="outline" onClick={refetch}>
+            Check again
+          </Button>
+          <Anchor component={Link} to="/dashboard" size="sm">
+            ← My lists
+          </Anchor>
+        </Group>
+      </ListDetailChrome>
     );
   }
 
   const { giftList } = state;
+  const status = listDetailStatus(giftList.expiresAt);
 
   return (
-    <main>
-      <p>
-        <Link to="/dashboard">← My lists</Link>
-      </p>
-
-      <h1>{giftList.name}</h1>
-      <p>Expires {new Date(giftList.expiresAt).toLocaleDateString()}</p>
-
-      {isRenaming ? (
-        <form
-          onSubmit={(event) => void handleRename(event, giftList.listId)}
-          noValidate
-        >
-          <label htmlFor={nameId}>List name</label>
-          <input
-            id={nameId}
-            type="text"
-            required
-            value={renameValue}
-            onChange={(event) => setRenameValue(event.target.value)}
-          />
-          {renameError && <p role="alert">{renameError}</p>}
-          <button type="submit" disabled={isSavingRename}>
-            {isSavingRename ? "Saving…" : "Save"}
-          </button>
-          <button
+    <ListDetailChrome userId={session.userId}>
+      <Paper radius="lg" shadow="md" withBorder p="xl" mb="lg">
+        <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+          <Box>
+            <Badge color={LIST_DETAIL_STATUS_COLOR[status]} variant="light" tt="none">
+              ● {LIST_DETAIL_STATUS_LABEL[status]}
+            </Badge>
+            <Title order={2} mt={8} mb={4}>
+              {giftList.name}
+            </Title>
+            <Text size="sm" c="var(--gl-text-muted)">
+              Expires {formatCalendarDate(giftList.expiresAt)}
+            </Text>
+          </Box>
+          <Button
             type="button"
-            onClick={() => setIsRenaming(false)}
-            disabled={isSavingRename}
+            variant="outline"
+            color="gray"
+            size="sm"
+            onClick={() => startRename(giftList.name)}
           >
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <button type="button" onClick={() => startRename(giftList.name)}>
-          Rename
-        </button>
-      )}
+            Rename
+          </Button>
+        </Group>
 
-      {/*
-        Copy-only, never a clickable <a> — opening this link yourself, signed in as the owner, is
-        the documented way to see which items are reserved and spoil your own surprise
-        (ARCHITECTURE.md "Reservation privacy"). Do not make this a link, even for convenience.
-      */}
-      <div>
-        <code>{shareLinkFor(giftList.shareToken)}</code>
-        <button
-          type="button"
-          onClick={() => void handleShare(giftList.shareToken)}
+        <Collapse expanded={isRenaming}>
+          <Box
+            component="form"
+            onSubmit={(event) => void handleRename(event, giftList.listId)}
+            noValidate
+            mt="md"
+          >
+            <Stack gap="sm">
+              <TextInput
+                id={nameId}
+                label="List name"
+                required
+                withAsterisk={false}
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+              />
+              {renameError && (
+                <Text role="alert" size="sm" c="danger">
+                  {renameError}
+                </Text>
+              )}
+              <Group gap={8}>
+                <Button type="submit" size="sm" disabled={isSavingRename}>
+                  {isSavingRename ? "Saving…" : "Save"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  color="gray"
+                  size="sm"
+                  onClick={() => setIsRenaming(false)}
+                  disabled={isSavingRename}
+                >
+                  Cancel
+                </Button>
+              </Group>
+            </Stack>
+          </Box>
+        </Collapse>
+
+        {/*
+          Copy-only, never a clickable <a> — opening this link yourself, signed in as the owner, is
+          the documented way to see which items are reserved and spoil your own surprise
+          (ARCHITECTURE.md "Reservation privacy"). Do not make this a link, even for convenience.
+        */}
+        <Group
+          mt="md"
+          gap={8}
+          wrap="nowrap"
+          style={{
+            padding: "10px 14px",
+            background: "var(--mantine-color-primary-0)",
+            border: "1px dashed var(--mantine-color-primary-2)",
+            borderRadius: 10,
+          }}
         >
-          {copied ? "Copied!" : "Copy link"}
-        </button>
-      </div>
+          <Code
+            style={{
+              flex: 1,
+              background: "transparent",
+              color: "var(--mantine-color-primary-7)",
+              overflowX: "auto",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {shareLinkFor(giftList.shareToken)}
+          </Code>
+          <Button
+            type="button"
+            variant="light"
+            size="xs"
+            onClick={() => void handleShare(giftList.shareToken)}
+          >
+            {copied ? "Copied!" : "Copy link"}
+          </Button>
+        </Group>
 
-      <p>
-        <strong>Heads up:</strong> this page will never show you which items
-        have been reserved — that&apos;s by design, so the surprise stays
-        intact. Who reserved something is never visible to anyone, anywhere;
-        we don&apos;t record it at all.
-      </p>
+        <Box
+          mt="md"
+          style={{
+            fontSize: "0.85rem",
+            color: "var(--gl-text-muted)",
+            background: "var(--mantine-color-body)",
+            border: "1px solid var(--gl-border)",
+            borderRadius: 10,
+            padding: "10px 14px",
+          }}
+        >
+          <Text component="span" fw={600} c="var(--gl-text)">
+            Heads up:
+          </Text>{" "}
+          this page will never show you which items have been reserved —
+          that&apos;s by design, so the surprise stays intact. The link above
+          is copy-only on purpose: opening it yourself would show you
+          what&apos;s been claimed and spoil it.
+          <br />
+          <br />
+          <Text component="span" fw={600} c="var(--gl-text)">
+            Who
+          </Text>{" "}
+          reserved something is never visible to anyone, anywhere — we
+          don&apos;t record it at all.
+        </Box>
+      </Paper>
 
       {changeConfirmationWarning && (
-        <p role="status">{changeConfirmationWarning}</p>
+        <Alert role="status" color="yellow" mb="lg">
+          {changeConfirmationWarning}
+        </Alert>
       )}
 
-      <h2>Items</h2>
-      {giftList.items.length === 0 && (
-        <p>No items yet — add the first one below.</p>
-      )}
-      <ul>
-        {giftList.items.map((item) => (
-          <li key={item.itemId}>
-            <div>{item.name}</div>
-            {item.description && <div>{item.description}</div>}
-            {item.url && (
-              <a href={item.url} target="_blank" rel="noreferrer">
-                {item.url}
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={() => void handleRemoveItem(giftList.listId, item.itemId)}
-              disabled={removingItemId === item.itemId}
+      <Paper radius="lg" shadow="md" withBorder p="xl" mb="lg">
+        <Title order={3} mb="md">
+          Items
+        </Title>
+        {giftList.items.length === 0 && (
+          <Text size="sm" c="var(--gl-text-muted)">
+            No items yet — add the first one below.
+          </Text>
+        )}
+        <Box component="ul" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {giftList.items.map((item) => (
+            <Box
+              component="li"
+              key={item.itemId}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                padding: "14px 0",
+                borderBottom: "1px solid var(--gl-border)",
+              }}
             >
-              {removingItemId === item.itemId ? "Removing…" : "Remove"}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {removeError && <p role="alert">{removeError}</p>}
+              <Center
+                w={44}
+                h={44}
+                style={{
+                  borderRadius: 10,
+                  background: "var(--mantine-color-accent-0)",
+                  fontSize: "1.2rem",
+                  flexShrink: 0,
+                }}
+              >
+                {itemThumbLabel(item.name)}
+              </Center>
+              <Box style={{ flex: 1, minWidth: 0 }}>
+                <Text fw={600} size="sm">
+                  {item.name}
+                </Text>
+                {item.description && (
+                  <Text size="xs" c="var(--gl-text-muted)" mt={2}>
+                    {item.description}
+                  </Text>
+                )}
+                {item.url && (
+                  <Anchor href={item.url} target="_blank" rel="noreferrer" size="xs">
+                    {item.url}
+                  </Anchor>
+                )}
+              </Box>
+              <Button
+                type="button"
+                variant="outline"
+                color="danger"
+                size="xs"
+                onClick={() => void handleRemoveItem(giftList.listId, item.itemId)}
+                disabled={removingItemId === item.itemId}
+              >
+                {removingItemId === item.itemId ? "Removing…" : "Remove"}
+              </Button>
+            </Box>
+          ))}
+        </Box>
+        {removeError && (
+          <Text role="alert" size="sm" c="danger" mt="sm">
+            {removeError}
+          </Text>
+        )}
 
-      <form
-        onSubmit={(event) => void handleAddItem(event, giftList.listId)}
-        noValidate
-      >
-        <div>
-          <label htmlFor={itemNameId}>Item name</label>
-          <input
-            id={itemNameId}
-            type="text"
-            required
-            value={itemName}
-            onChange={(event) => setItemName(event.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor={itemUrlId}>Link (optional)</label>
-          <input
-            id={itemUrlId}
-            type="text"
-            value={itemUrl}
-            onChange={(event) => setItemUrl(event.target.value)}
-            aria-invalid={itemUrlError ? true : undefined}
-            aria-describedby={itemUrlError ? itemUrlErrorId : undefined}
-          />
+        <Box
+          component="form"
+          onSubmit={(event) => void handleAddItem(event, giftList.listId)}
+          noValidate
+          mt="md"
+          pt="md"
+          style={{ borderTop: "1px solid var(--gl-border)" }}
+        >
+          <Group align="flex-end" gap={8} wrap="wrap">
+            <TextInput
+              id={itemNameId}
+              label="Item name"
+              required
+              withAsterisk={false}
+              style={{ flex: 1, minWidth: 180 }}
+              value={itemName}
+              onChange={(event) => setItemName(event.target.value)}
+            />
+            <TextInput
+              id={itemUrlId}
+              label="Link (optional)"
+              style={{ flex: 1, minWidth: 180 }}
+              value={itemUrl}
+              onChange={(event) => setItemUrl(event.target.value)}
+              aria-invalid={itemUrlError ? true : undefined}
+              aria-describedby={itemUrlError ? itemUrlErrorId : undefined}
+            />
+            <Button type="submit" size="sm" disabled={isAddingItem}>
+              {isAddingItem ? "Adding…" : "Add item"}
+            </Button>
+          </Group>
           {itemUrlError && (
-            <p role="alert" id={itemUrlErrorId}>
+            <Text role="alert" id={itemUrlErrorId} size="xs" c="danger" mt={6}>
               {itemUrlError}
-            </p>
+            </Text>
           )}
-        </div>
-        {addItemError && <p role="alert">{addItemError}</p>}
-        <button type="submit" disabled={isAddingItem}>
-          {isAddingItem ? "Adding…" : "Add item"}
-        </button>
-      </form>
+          {addItemError && (
+            <Text role="alert" size="sm" c="danger" mt={6}>
+              {addItemError}
+            </Text>
+          )}
+        </Box>
+      </Paper>
 
-      <section>
-        <h2>Delete this list</h2>
-        <p>
+      <Paper
+        radius="lg"
+        withBorder
+        p="lg"
+        style={{
+          borderColor: "var(--mantine-color-danger-1)",
+          background: "#fffafa",
+        }}
+      >
+        <Title order={4} c="danger" mb={6}>
+          Delete this list
+        </Title>
+        <Text size="sm" c="var(--gl-text-muted)" mb="md">
           This removes the list and its share link permanently. Reservations
           already made are not affected for guests who reserved, but the list
           can no longer be viewed.
-        </p>
-        {deleteError && <p role="alert">{deleteError}</p>}
-        <button
+        </Text>
+        {deleteError && (
+          <Text role="alert" size="sm" c="danger" mb="sm">
+            {deleteError}
+          </Text>
+        )}
+        <Button
           type="button"
+          variant="outline"
+          color="danger"
+          size="sm"
           onClick={() => void handleDelete(giftList.listId)}
           disabled={isDeleting}
         >
           {isDeleting ? "Deleting…" : "Delete list"}
-        </button>
-      </section>
-    </main>
+        </Button>
+      </Paper>
+    </ListDetailChrome>
   );
 }
