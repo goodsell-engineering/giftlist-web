@@ -71,7 +71,8 @@ export default function SharedListPage() {
   const { shareToken } = useParams<{ shareToken: string }>();
   const token = shareToken ?? "";
   const { state, refetch } = useSharedGiftList(token);
-  const { reserve, stateFor, errorFor, dismissConflict } = useReserveGift(token);
+  const { reserve, stateFor, errorFor, dismissConflict } =
+    useReserveGift(token);
 
   if (!shareToken) {
     // The router only ever matches this route with a :shareToken param — defensive, not
@@ -262,10 +263,10 @@ function SharedGiftItemRow({
             uiState === "reserved") && (
             <Badge
               color={uiState === "reserved-by-you" ? "success" : "primary"}
-              variant="light"
-              size="lg"
             >
-              {uiState === "reserved-by-you" ? "✓ You reserved this" : "✓ Reserved"}
+              {uiState === "reserved-by-you"
+                ? "✓ You reserved this"
+                : "✓ Reserved"}
             </Badge>
           )}
         </Group>
