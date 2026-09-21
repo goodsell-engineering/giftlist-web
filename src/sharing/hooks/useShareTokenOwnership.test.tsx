@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor } from "../../test/render";
 import type { ReactNode } from "react";
 
 import { useShareTokenOwnership } from "./useShareTokenOwnership";

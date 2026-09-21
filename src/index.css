@@ -1,11 +1,7 @@
-/* Minimal reset only. Out of scope for this skeleton: a styling system (see GL-15
-   scope note) — mockups/style.css is the eventual design source of truth. */
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
-}
+/* Mantine's own baseline.css (imported via "@mantine/core/styles.css" in main.tsx, before this
+   file) already supplies the box-sizing reset and the body's margin/font-family/background-
+   color/text-color — the last two read from the CSS variables ui/theme.ts's cssVariablesResolver
+   sets (--mantine-color-body/--mantine-color-text, from theme.other.bg/text, which themselves
+   come from mockups/style.css's --bg/--text). There is deliberately nothing left to put here;
+   this file exists only so main.tsx has something to import without every future addition
+   reopening "is a stylesheet still needed at all". */

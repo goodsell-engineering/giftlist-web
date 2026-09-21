@@ -32,4 +32,14 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // GL-121: src/test/render.tsx re-exports everything from @testing-library/react
+    // (`export *`) alongside its own wrapped `render` — the rule can't verify a wildcard
+    // re-export is components-only, but this file is test-only support that Vite's dev server
+    // never HMRs, so the warning has nothing to protect here.
+    files: ["src/test/**/*.{ts,tsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
 );
