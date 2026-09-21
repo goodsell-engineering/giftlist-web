@@ -116,6 +116,11 @@ export const theme = createTheme({
     lg: "0 1px 2px rgba(36, 31, 54, 0.04), 0 8px 24px rgba(36, 31, 54, 0.06)",
     xl: "0 1px 2px rgba(36, 31, 54, 0.04), 0 8px 24px rgba(36, 31, 54, 0.06)",
   },
+  components: {
+    // The mockups have one `.badge`: sentence case, soft fill. Mantine's default is uppercase,
+    // which three page agents handled three ways (Batch 43 review, S2) — settled here.
+    Badge: { defaultProps: { variant: "light", tt: "none" } },
+  },
   other: {
     bg: "#f6f5fb",
     surface: "#ffffff",
@@ -136,6 +141,8 @@ export const cssVariablesResolver: CSSVariablesResolver = (resolvedTheme) => ({
     // Every Input, Paper withBorder, Divider and Table border in one place — mockups' --border,
     // not Mantine's gray-4 (Batch 42 review, H3).
     "--mantine-color-default-border": resolvedTheme.other.border,
+    // `c="dimmed"` and `c="var(--gl-text-muted)"` are the same grey (Batch 43 review, S3).
+    "--mantine-color-dimmed": resolvedTheme.other.textMuted,
     "--gl-bg": resolvedTheme.other.bg,
     "--gl-surface": resolvedTheme.other.surface,
     "--gl-border": resolvedTheme.other.border,

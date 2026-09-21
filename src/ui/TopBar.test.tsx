@@ -5,7 +5,9 @@ import { TopBar, TopBarUserMenu } from "./TopBar";
 
 describe("TopBar", () => {
   it("TopBar_ShouldRenderTheBrand_Always", () => {
-    // Arrange & Act
+    // Arrange — no arrangement beyond the default, slot-less render itself.
+
+    // Act
     render(<TopBar />);
 
     // Assert
@@ -13,7 +15,9 @@ describe("TopBar", () => {
   });
 
   it("TopBar_ShouldRenderTheRightSlot_WhenOneIsProvided", () => {
-    // Arrange & Act
+    // Arrange — no arrangement beyond the `right` slot's own content.
+
+    // Act
     render(<TopBar right={<TopBarUserMenu displayName="Ada Lovelace" />} />);
 
     // Assert
@@ -24,7 +28,9 @@ describe("TopBar", () => {
 
 describe("TopBarUserMenu", () => {
   it("TopBarUserMenu_ShouldRenderInitialsFromFirstAndLastWord_WhenGivenAMultiWordName", () => {
-    // Arrange & Act
+    // Arrange — no arrangement beyond the multi-word display name itself.
+
+    // Act
     render(<TopBarUserMenu displayName="Ada Lovelace" />);
 
     // Assert
@@ -32,7 +38,9 @@ describe("TopBarUserMenu", () => {
   });
 
   it("TopBarUserMenu_ShouldRenderASingleInitial_WhenGivenASingleWordName", () => {
-    // Arrange & Act
+    // Arrange — no arrangement beyond the single-word display name itself.
+
+    // Act
     render(<TopBarUserMenu displayName="Ada" />);
 
     // Assert

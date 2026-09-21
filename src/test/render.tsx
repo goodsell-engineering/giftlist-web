@@ -10,11 +10,13 @@
  */
 import type { ReactElement } from "react";
 import { MantineProvider } from "@mantine/core";
+import { DatesProvider } from "@mantine/dates";
 import {
   render as testingLibraryRender,
   type RenderOptions,
 } from "@testing-library/react";
 
+import { resolveDayjsLocale } from "../ui/dates";
 import { theme, cssVariablesResolver } from "../ui/theme";
 
 function render(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
@@ -28,7 +30,11 @@ function render(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
         // effect under jsdom and otherwise leaves timers/observers running past a test's end.
         env="test"
       >
-        {children}
+        {/* Same DatesProvider as App.tsx, so a DatePickerInput under test formats its value the
+            way the running app does (jsdom reports en-US, so the "en" dayjs locale). */}
+        <DatesProvider settings={{ locale: resolveDayjsLocale() }}>
+          {children}
+        </DatesProvider>
       </MantineProvider>
     ),
     ...options,
