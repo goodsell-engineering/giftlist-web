@@ -4,8 +4,10 @@ import { render, screen } from "../test/render";
 import { AuthCard } from "./AuthCard";
 
 describe("AuthCard", () => {
-  it("AuthCard_ShouldRenderItsChildren", () => {
-    // Arrange & Act
+  it("AuthCard_ShouldRenderItsChildren_WhenGivenAnyChildren", () => {
+    // Arrange — no arrangement beyond the children themselves.
+
+    // Act
     render(
       <AuthCard>
         <h1>Welcome back</h1>
