@@ -64,6 +64,17 @@ describe("resolveDayjsLocale", () => {
     expect(locale).toBe("de");
   });
 
+  it("resolveDayjsLocale_ShouldFallBackToEn_WhenTheBrowserLanguageIsUndefined", () => {
+    // Arrange
+    const browserLanguage = undefined;
+
+    // Act
+    const locale = resolveDayjsLocale(browserLanguage);
+
+    // Assert
+    expect(locale).toBe("en");
+  });
+
   it("resolveDayjsLocale_ShouldFallBackToEn_WhenNeitherTheLanguageNorTheRegionIsRegistered", () => {
     // Arrange
     const browserLanguage = "ja-JP";

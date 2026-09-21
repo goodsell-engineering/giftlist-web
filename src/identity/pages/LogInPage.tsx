@@ -106,7 +106,7 @@ export default function LogInPage() {
             onChange={(event) => setPassword(event.target.value)}
           />
           {error && (
-            <Text role="alert" c="red" size="sm">
+            <Text role="alert" c="danger" size="sm">
               {error}
             </Text>
           )}

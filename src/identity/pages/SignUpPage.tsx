@@ -116,7 +116,7 @@ export default function SignUpPage() {
             onChange={(event) => setConfirmPassword(event.target.value)}
           />
           {error && (
-            <Text role="alert" c="red" size="sm">
+            <Text role="alert" c="danger" size="sm">
               {error}
             </Text>
           )}

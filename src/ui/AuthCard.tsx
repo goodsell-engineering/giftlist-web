@@ -27,14 +27,7 @@ export function AuthCard({ children }: AuthCardProps) {
           "radial-gradient(circle at 20% 20%, var(--mantine-color-primary-0) 0%, var(--gl-bg) 45%)",
       }}
     >
-      <Paper
-        radius="lg"
-        shadow="md"
-        withBorder
-        style={{ borderColor: "var(--gl-border)" }}
-        w={420}
-        p={32}
-      >
+      <Paper radius="lg" shadow="md" withBorder w={420} p={32}>
         {children}
       </Paper>
     </Box>

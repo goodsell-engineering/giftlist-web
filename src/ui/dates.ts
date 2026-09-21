@@ -75,9 +75,12 @@ function isSupportedDayjsLocale(value: string): value is SupportedDayjsLocale {
  * meant to resolve the same locale the same way, not two independent guesses.
  */
 export function resolveDayjsLocale(
-  browserLanguage: string = navigator.language,
+  // `globalThis.navigator?.language` rather than `navigator.language`: a default parameter only
+  // fills a *missing* argument, so if the property itself were undefined the old default would
+  // have been passed through and `.toLowerCase()` would throw at App mount (Batch 42 review, S1).
+  browserLanguage: string | undefined = globalThis.navigator?.language,
 ): SupportedDayjsLocale {
-  const lower = browserLanguage.toLowerCase();
+  const lower = (browserLanguage ?? "").toLowerCase();
   if (isSupportedDayjsLocale(lower)) {
     return lower;
   }

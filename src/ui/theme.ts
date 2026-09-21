@@ -51,15 +51,51 @@ const accent = [
   "#db2c00",
 ] as const;
 
+// Shared by body text and headings: Mantine's `headings.fontFamily` is a separate default that
+// would otherwise skip Inter on a non-Apple demo box (Batch 42 review, H1).
+const fontFamily =
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif';
+
+// Centred on --success (#1a9c6d, shade 6) with --success-soft (#e6f7f0) as shade 0 — the
+// badge-active/badge-available fills in the mockups. Same construction as `primary`.
+const success = [
+  "#e6f7f0",
+  "#c8ecdc",
+  "#a3dfc5",
+  "#74cea7",
+  "#4bbf8e",
+  "#2fae7b",
+  "#1a9c6d",
+  "#15855c",
+  "#116d4b",
+  "#0d563b",
+] as const;
+
+// Centred on --danger (#d64545, shade 6) with --danger-soft (#fbe9e9) as shade 0 — badge-expired,
+// the danger zone and btn-danger-outline (whose #f0c9c9 border is shade 1). Also replaces the
+// auth pages' former `c="red"` (Mantine's #fa5252) for error text.
+const danger = [
+  "#fbe9e9",
+  "#f0c9c9",
+  "#e8a8a8",
+  "#e18585",
+  "#dc6666",
+  "#d95353",
+  "#d64545",
+  "#bd3a3a",
+  "#a02f2f",
+  "#832525",
+] as const;
+
 export const theme = createTheme({
   primaryColor: "primary",
   // Both schemes pinned to shade 6 rather than Mantine's default { light: 6, dark: 8 } — light is
   // the only scheme this story wires up (forceColorScheme="light" in App.tsx), and a single number
   // keeps the primary-shade story consistent if dark mode is ever turned on without a design pass.
   primaryShade: 6,
-  colors: { primary, accent },
-  fontFamily:
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif',
+  colors: { primary, accent, success, danger },
+  fontFamily,
+  headings: { fontFamily },
   defaultRadius: "md",
   radius: {
     xs: "4px",
@@ -89,7 +125,7 @@ export const theme = createTheme({
   },
 });
 
-// Overrides Mantine's own --mantine-color-body/--mantine-color-text (baseline.css already applies
+// Overrides Mantine's own --mantine-color-body/--mantine-color-text/--mantine-color-default-border (baseline.css already applies
 // both to <body>, so this alone satisfies GL-121's "body background/text" requirement with no
 // hand-written CSS) and adds --gl-* aliases for `other`'s remaining values, for the few call sites
 // that need a CSS custom property rather than a theme prop (AuthCard's page background gradient).
@@ -97,6 +133,9 @@ export const cssVariablesResolver: CSSVariablesResolver = (resolvedTheme) => ({
   variables: {
     "--mantine-color-body": resolvedTheme.other.bg,
     "--mantine-color-text": resolvedTheme.other.text,
+    // Every Input, Paper withBorder, Divider and Table border in one place — mockups' --border,
+    // not Mantine's gray-4 (Batch 42 review, H3).
+    "--mantine-color-default-border": resolvedTheme.other.border,
     "--gl-bg": resolvedTheme.other.bg,
     "--gl-surface": resolvedTheme.other.surface,
     "--gl-border": resolvedTheme.other.border,
