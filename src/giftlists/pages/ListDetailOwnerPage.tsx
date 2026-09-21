@@ -60,7 +60,7 @@ import { useAuth } from "../../identity/auth/useAuth";
 import { useGiftList } from "../hooks/useGiftList";
 import { createGiftListsClient } from "../api/giftListsClient";
 import { describeGiftListsCommandError } from "../api/giftListsErrors";
-import { TopBar, TopBarUserMenu } from "../../ui/TopBar";
+import { TopBar } from "../../ui/TopBar";
 import { Page } from "../../ui/Page";
 import { formatCalendarDate } from "../../ui/dates";
 
@@ -242,35 +242,26 @@ function itemThumbLabel(name: string): string {
 
 /**
  * The TopBar + Page chrome shared by every branch below (loading, forbidden, not-found, error,
- * unresolved and ready) — built once here so all of them get the same "← My lists" link and
- * avatar rather than each branch inventing its own header.
+ * unresolved and ready) — built once here so all of them get the same "← My lists" link rather
+ * than each branch inventing its own header.
  *
- * `displayName` is `session.userId` (`AuthSession` doesn't carry a real display name yet — see
- * `TopBarUserMenu`'s own doc comment) rather than something friendlier; this page can't invent
- * data the session doesn't have.
+ * No `TopBarUserMenu`: `AuthSession` carries only `userId`, and rendering a GUID as a name (with
+ * its first hex digit as the avatar) is worse than the empty slot the dashboard shows (Batch 43
+ * review, S1). Both pages get the menu in one change once the session has a display name.
  */
-function ListDetailChrome({
-  userId,
-  children,
-}: {
-  userId: string;
-  children: ReactNode;
-}) {
+function ListDetailChrome({ children }: { children: ReactNode }) {
   return (
     <>
       <TopBar
         right={
-          <Group gap={20}>
-            <Anchor
-              component={Link}
-              to="/dashboard"
-              size="sm"
-              c="var(--gl-text-muted)"
-            >
-              ← My lists
-            </Anchor>
-            <TopBarUserMenu displayName={userId} />
-          </Group>
+          <Anchor
+            component={Link}
+            to="/dashboard"
+            size="sm"
+            c="var(--gl-text-muted)"
+          >
+            ← My lists
+          </Anchor>
         }
       />
       <Page>{children}</Page>
@@ -288,7 +279,9 @@ export default function ListDetailOwnerPage() {
   // See useGiftList's own doc comment, rule 2: only the create-and-navigate flow has a real reason
   // to expect a first-read NOT_FOUND to clear up on its own — every other arrival (a bookmark, a
   // mistyped id, the back button onto a list just deleted) gets an immediate, unambiguous answer.
-  const justCreated = Boolean((location.state as LocationState | null)?.justCreated);
+  const justCreated = Boolean(
+    (location.state as LocationState | null)?.justCreated,
+  );
 
   const { state, refetch, confirmChange, confirmDeleted } = useGiftList(
     accessToken,
@@ -485,7 +478,7 @@ export default function ListDetailOwnerPage() {
 
   if (state.status === "loading" || state.status === "pending") {
     return (
-      <ListDetailChrome userId={session.userId}>
+      <ListDetailChrome>
         <Center py={64}>
           <Group gap="sm">
             <Loader size="sm" />
@@ -498,7 +491,7 @@ export default function ListDetailOwnerPage() {
 
   if (state.status === "forbidden") {
     return (
-      <ListDetailChrome userId={session.userId}>
+      <ListDetailChrome>
         <Alert role="alert" color="danger" mb="md">
           You do not own this gift list.
         </Alert>
@@ -514,7 +507,7 @@ export default function ListDetailOwnerPage() {
     // flow, so there is no reason to think the read model is still catching up (useGiftList's own
     // doc comment, rule 2). No GL-72-shaped hedging belongs here.
     return (
-      <ListDetailChrome userId={session.userId}>
+      <ListDetailChrome>
         <Alert role="alert" color="danger" mb="md">
           This list doesn&apos;t exist.
         </Alert>
@@ -527,12 +520,12 @@ export default function ListDetailOwnerPage() {
 
   if (state.status === "error") {
     return (
-      <ListDetailChrome userId={session.userId}>
+      <ListDetailChrome>
         <Alert role="alert" color="danger" mb="md">
           {state.info.message}
         </Alert>
         <Group gap="md">
-          <Button type="button" variant="outline" onClick={refetch}>
+          <Button type="button" variant="default" onClick={refetch}>
             Try again
           </Button>
           <Anchor component={Link} to="/dashboard" size="sm">
@@ -545,7 +538,7 @@ export default function ListDetailOwnerPage() {
 
   if (state.status === "unresolved") {
     return (
-      <ListDetailChrome userId={session.userId}>
+      <ListDetailChrome>
         {/* GL-72 is open: every GiftLists command is fire-and-forget, so a command GiftLists
             later rejects is never reported back to the browser, which by then already holds a
             "successful" response for a list that may never exist — this message says so rather
@@ -554,11 +547,11 @@ export default function ListDetailOwnerPage() {
             reading it. */}
         <Alert role="alert" color="yellow" mb="md">
           We can&apos;t find this list yet. It may still be processing, or the
-          request that created it may not have gone through — we can&apos;t
-          tell those two apart yet.
+          request that created it may not have gone through — we can&apos;t tell
+          those two apart yet.
         </Alert>
         <Group gap="md">
-          <Button type="button" variant="outline" onClick={refetch}>
+          <Button type="button" variant="default" onClick={refetch}>
             Check again
           </Button>
           <Anchor component={Link} to="/dashboard" size="sm">
@@ -573,11 +566,15 @@ export default function ListDetailOwnerPage() {
   const status = listDetailStatus(giftList.expiresAt);
 
   return (
-    <ListDetailChrome userId={session.userId}>
+    <ListDetailChrome>
       <Paper radius="lg" shadow="md" withBorder p="xl" mb="lg">
         <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
           <Box>
-            <Badge color={LIST_DETAIL_STATUS_COLOR[status]} variant="light" tt="none">
+            <Badge
+              color={LIST_DETAIL_STATUS_COLOR[status]}
+              variant="light"
+              tt="none"
+            >
               ● {LIST_DETAIL_STATUS_LABEL[status]}
             </Badge>
             <Title order={2} mt={8} mb={4}>
@@ -589,8 +586,7 @@ export default function ListDetailOwnerPage() {
           </Box>
           <Button
             type="button"
-            variant="outline"
-            color="gray"
+            variant="default"
             size="sm"
             onClick={() => startRename(giftList.name)}
           >
@@ -625,8 +621,7 @@ export default function ListDetailOwnerPage() {
                 </Button>
                 <Button
                   type="button"
-                  variant="outline"
-                  color="gray"
+                  variant="default"
                   size="sm"
                   onClick={() => setIsRenaming(false)}
                   disabled={isSavingRename}
@@ -690,9 +685,9 @@ export default function ListDetailOwnerPage() {
             Heads up:
           </Text>{" "}
           this page will never show you which items have been reserved —
-          that&apos;s by design, so the surprise stays intact. The link above
-          is copy-only on purpose: opening it yourself would show you
-          what&apos;s been claimed and spoil it.
+          that&apos;s by design, so the surprise stays intact. The link above is
+          copy-only on purpose: opening it yourself would show you what&apos;s
+          been claimed and spoil it.
           <br />
           <br />
           <Text component="span" fw={600} c="var(--gl-text)">
@@ -718,7 +713,10 @@ export default function ListDetailOwnerPage() {
             No items yet — add the first one below.
           </Text>
         )}
-        <Box component="ul" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        <Box
+          component="ul"
+          style={{ listStyle: "none", margin: 0, padding: 0 }}
+        >
           {giftList.items.map((item) => (
             <Box
               component="li"
@@ -753,7 +751,12 @@ export default function ListDetailOwnerPage() {
                   </Text>
                 )}
                 {item.url && (
-                  <Anchor href={item.url} target="_blank" rel="noreferrer" size="xs">
+                  <Anchor
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    size="xs"
+                  >
                     {item.url}
                   </Anchor>
                 )}
@@ -763,7 +766,9 @@ export default function ListDetailOwnerPage() {
                 variant="outline"
                 color="danger"
                 size="xs"
-                onClick={() => void handleRemoveItem(giftList.listId, item.itemId)}
+                onClick={() =>
+                  void handleRemoveItem(giftList.listId, item.itemId)
+                }
                 disabled={removingItemId === item.itemId}
               >
                 {removingItemId === item.itemId ? "Removing…" : "Remove"}
