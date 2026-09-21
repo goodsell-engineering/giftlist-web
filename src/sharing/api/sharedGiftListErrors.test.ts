@@ -8,7 +8,7 @@ import {
 
 describe("describeSharedGiftListReadError", () => {
   it("DescribeSharedGiftListReadError_ShouldReturnInvalidToken_WhenErrorCodeIsGatewayInvalidShareToken", () => {
-    // Arrange — GetSharedGiftListInteractor's own mapped failure: the token is the wrong shape,
+    // Arrange — ViewGiftListInteractor's own mapped failure: the token is the wrong shape,
     // rejected before any database round-trip.
     const error = new GraphQlRequestError([
       {

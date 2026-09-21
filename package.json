@@ -20,7 +20,7 @@
     "@bufbuild/protobuf": "^2.14.1",
     "@connectrpc/connect": "^2.1.2",
     "@connectrpc/connect-web": "^2.1.2",
-    "@giftlist/gateway-client": "file:../local-feed/giftlist-gateway-client-0.1.0.tgz",
+    "@giftlist/gateway-client": "file:../local-feed/giftlist-gateway-client-0.2.0.tgz",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3"

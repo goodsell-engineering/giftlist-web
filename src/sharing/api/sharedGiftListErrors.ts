@@ -6,7 +6,7 @@
  *
  * `sharedGiftList(token)` fails two distinguishable ways
  * (`Gateway.Infrastructure/GiftLists/GraphQL/GiftListQueries.cs`'s own doc comment,
- * `Gateway.Application/GiftLists/GetSharedGiftList`):
+ * `Gateway.Application/GiftLists/ViewGiftList`):
  *
  * - `gateway.invalid_share_token` (`ErrorKind.Validation` → `BAD_USER_INPUT`) — the token is the
  *   wrong *shape*, rejected before any database round-trip.
@@ -18,6 +18,10 @@
  * rather than being given the same "no list exists" message reused verbatim from the owner-facing
  * table (which reads oddly to a guest who just followed a link, and was written for a UUID path
  * parameter, not an opaque token).
+ *
+ * Reused as-is by `sharedGiftListSubscription.ts` (GL-40): `sharedGiftListChanged(token)` fails
+ * the same two ways, from the same `ViewGiftListInteractor`, at subscribe time — one table, not a
+ * second one bolted onto the live channel for codes that already mean the same thing here.
  */
 import {
   GraphQlRequestError,

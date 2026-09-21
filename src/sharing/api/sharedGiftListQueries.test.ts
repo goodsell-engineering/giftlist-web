@@ -15,7 +15,7 @@ describe("fetchSharedGiftList", () => {
   });
 
   it("FetchSharedGiftList_ShouldNeverSelectOwnerIdOrShareTokenOrCreatedAt_RegardlessOfWhatThePageRenders", async () => {
-    // Arrange — SharedGiftListView (Gateway.Application/GiftLists/GetSharedGiftList) has no
+    // Arrange — SharedGiftListView (Gateway.Application/GiftLists/ViewGiftList) has no
     // ownerId/shareToken/createdAt field at all; a query that selects one fails against the real
     // schema outright. A test that only asserts the fields this page renders would pass just as
     // happily under a query that *also* selected one of these — this asserts the query text
@@ -37,6 +37,27 @@ describe("fetchSharedGiftList", () => {
     expect(query).not.toMatch(/\bownerId\b/);
     expect(query).not.toMatch(/\bshareToken\b/);
     expect(query).not.toMatch(/\bcreatedAt\b/);
+  });
+
+  it("FetchSharedGiftList_ShouldSelectReserved_OnEveryItem", async () => {
+    // Arrange — GL-40: the reserve buttons need to know which items are already taken. Asserted
+    // by name, same reasoning as the previous test: a query that happened to omit `reserved`
+    // would still satisfy any test that only checks the fields the page currently renders.
+    graphqlRequestAnonymousMock.mockResolvedValue({
+      sharedGiftList: {
+        listId: "list-1",
+        name: "Birthday Wishlist",
+        expiresAt: new Date().toISOString(),
+        items: [],
+      },
+    });
+
+    // Act
+    await fetchSharedGiftList("share-token-1");
+
+    // Assert
+    const [query] = graphqlRequestAnonymousMock.mock.calls[0];
+    expect(query).toMatch(/\breserved\b/);
   });
 
   it("FetchSharedGiftList_ShouldCallTheAnonymousTransport_WithTheShareTokenAsAVariable", async () => {
@@ -67,7 +88,13 @@ describe("fetchSharedGiftList", () => {
       name: "Birthday Wishlist",
       expiresAt: new Date().toISOString(),
       items: [
-        { itemId: "item-1", name: "Headphones", description: null, url: null },
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: null,
+          url: null,
+          reserved: false,
+        },
       ],
     };
     graphqlRequestAnonymousMock.mockResolvedValue({ sharedGiftList: giftList });
