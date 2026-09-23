@@ -7,6 +7,7 @@ import type { SharedGiftListView } from "../api/sharedGiftListQueries";
 import { subscribeToSharedGiftListChanged } from "../api/sharedGiftListSubscription";
 import type { SharedGiftListChangedHandlers } from "../api/sharedGiftListSubscription";
 import { GraphQlRequestError } from "../../giftlists/api/graphqlClient";
+import { aShareToken } from "../../test/shareTokens";
 
 vi.mock("../api/sharedGiftListQueries", () => ({
   fetchSharedGiftList: vi.fn(),
@@ -23,10 +24,12 @@ const closeSubscriptionMock = vi.fn();
 
 function stubSubscription() {
   let capturedHandlers: SharedGiftListChangedHandlers | null = null;
-  subscribeToSharedGiftListChangedMock.mockImplementation((_token, handlers) => {
-    capturedHandlers = handlers;
-    return { close: closeSubscriptionMock };
-  });
+  subscribeToSharedGiftListChangedMock.mockImplementation(
+    (_token, handlers) => {
+      capturedHandlers = handlers;
+      return { close: closeSubscriptionMock };
+    },
+  );
   return {
     push: (giftList: SharedGiftListView) => capturedHandlers?.onData(giftList),
   };
@@ -66,14 +69,14 @@ describe("useSharedGiftList", () => {
     fetchSharedGiftListMock.mockResolvedValue(giftList);
 
     // Act
-    const { result } = renderHook(() => useSharedGiftList("share-token-1"));
+    const { result } = renderHook(() => useSharedGiftList(aShareToken()));
 
     // Assert
     expect(result.current.state).toEqual({ status: "loading" });
     await waitFor(() =>
       expect(result.current.state).toEqual({ status: "ready", giftList }),
     );
-    expect(fetchSharedGiftListMock).toHaveBeenCalledWith("share-token-1");
+    expect(fetchSharedGiftListMock).toHaveBeenCalledWith(aShareToken());
   });
 
   it("UseSharedGiftList_ShouldResolveToErrorImmediately_WhenTheTokenDoesNotResolve", async () => {
@@ -83,7 +86,7 @@ describe("useSharedGiftList", () => {
     fetchSharedGiftListMock.mockRejectedValue(notFoundError());
 
     // Act
-    const { result } = renderHook(() => useSharedGiftList("share-token-1"));
+    const { result } = renderHook(() => useSharedGiftList(aShareToken()));
 
     // Assert
     await waitFor(() => expect(result.current.state.status).toBe("error"));
@@ -95,7 +98,7 @@ describe("useSharedGiftList", () => {
     stubSubscription();
     const giftList = aSharedGiftList();
     fetchSharedGiftListMock.mockResolvedValue(giftList);
-    const { result } = renderHook(() => useSharedGiftList("share-token-1"));
+    const { result } = renderHook(() => useSharedGiftList(aShareToken()));
     await waitFor(() => expect(result.current.state.status).toBe("ready"));
 
     // Act
@@ -117,12 +120,12 @@ describe("useSharedGiftList", () => {
     fetchSharedGiftListMock.mockResolvedValue(aSharedGiftList());
 
     // Act
-    renderHook(() => useSharedGiftList("share-token-1"));
+    renderHook(() => useSharedGiftList(aShareToken()));
 
     // Assert
     await waitFor(() =>
       expect(subscribeToSharedGiftListChangedMock).toHaveBeenCalledWith(
-        "share-token-1",
+        aShareToken(),
         expect.objectContaining({
           onData: expect.any(Function),
           onError: expect.any(Function),
@@ -148,7 +151,7 @@ describe("useSharedGiftList", () => {
         ],
       }),
     );
-    const { result } = renderHook(() => useSharedGiftList("share-token-1"));
+    const { result } = renderHook(() => useSharedGiftList(aShareToken()));
     await waitFor(() => expect(result.current.state.status).toBe("ready"));
 
     // Act
@@ -174,11 +177,12 @@ describe("useSharedGiftList", () => {
     });
   });
 
-  it("UseSharedGiftList_ShouldIgnoreAPush_WhenItArrivesBeforeTheInitialReadHasEverSucceeded", () => {
-    // Arrange — a push must not fabricate a "ready" screen out of a still-loading one.
+  it("UseSharedGiftList_ShouldNotFabricateAReadyScreen_WhenAPushArrivesBeforeTheInitialReadHasEverSucceeded", () => {
+    // Arrange — a push must not fabricate a "ready" screen out of a still-loading one while the
+    // fetch it's racing might still fail. It is buffered instead (the next test), not dropped.
     const { push } = stubSubscription();
     fetchSharedGiftListMock.mockReturnValue(new Promise(() => {})); // never resolves in this test
-    const { result } = renderHook(() => useSharedGiftList("share-token-1"));
+    const { result } = renderHook(() => useSharedGiftList(aShareToken()));
 
     // Act
     act(() => {
@@ -189,11 +193,92 @@ describe("useSharedGiftList", () => {
     expect(result.current.state).toEqual({ status: "loading" });
   });
 
+  it("UseSharedGiftList_ShouldApplyABufferedPush_WhenItArrivedWhileLoadingAndTheInitialReadThenSucceeds", async () => {
+    // Arrange — GL-42 (folded from GL-40's own review): the query's own DB read and a live change
+    // notification race with no ordering guarantee, so the push — provably fresher — must win.
+    const { push } = stubSubscription();
+    let resolveFetch: (giftList: SharedGiftListView) => void = () => {};
+    fetchSharedGiftListMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+    const { result } = renderHook(() => useSharedGiftList(aShareToken()));
+
+    // Act — a push lands before the initial read has resolved...
+    const pushedGiftList = aSharedGiftList({ name: "Pushed while loading" });
+    act(() => {
+      push(pushedGiftList);
+    });
+    expect(result.current.state).toEqual({ status: "loading" });
+
+    // ...then the initial read finally settles, with a now-stale response of its own.
+    await act(async () => {
+      resolveFetch(aSharedGiftList({ name: "Stale query response" }));
+    });
+
+    // Assert — the buffered push wins, not the stale query response.
+    expect(result.current.state).toEqual({
+      status: "ready",
+      giftList: pushedGiftList,
+    });
+  });
+
+  it("UseSharedGiftList_ShouldNotApplyAStaleBufferedPush_WhenARefetchSupersedesTheFetchItRaced", async () => {
+    // Arrange — the buffer is reset at the start of every fetch (this file's own header): a push
+    // buffered for one fetch generation must not leak into a later, unrelated one.
+    const { push } = stubSubscription();
+    let resolveFirst: (giftList: SharedGiftListView) => void = () => {};
+    let resolveSecond: (giftList: SharedGiftListView) => void = () => {};
+    fetchSharedGiftListMock
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    const { result } = renderHook(() => useSharedGiftList(aShareToken()));
+
+    // Act — a push lands during the first, still in-flight fetch...
+    act(() => {
+      push(aSharedGiftList({ name: "Stale push from the first fetch" }));
+    });
+
+    // ...then a refetch starts a second fetch before the first ever resolves...
+    act(() => {
+      result.current.refetch();
+    });
+    expect(result.current.state).toEqual({ status: "loading" });
+
+    // ...and the second fetch settles with its own answer.
+    const secondFetchResult = aSharedGiftList({ name: "Second fetch" });
+    await act(async () => {
+      resolveSecond(secondFetchResult);
+    });
+
+    // Assert — the stale push from the superseded first fetch does not win.
+    expect(result.current.state).toEqual({
+      status: "ready",
+      giftList: secondFetchResult,
+    });
+
+    // Cleanup — the first fetch's own (now-ignored) resolution.
+    await act(async () => {
+      resolveFirst(aSharedGiftList());
+    });
+  });
+
   it("UseSharedGiftList_ShouldCloseTheSubscription_OnUnmount", async () => {
     // Arrange
     stubSubscription();
     fetchSharedGiftListMock.mockResolvedValue(aSharedGiftList());
-    const { unmount } = renderHook(() => useSharedGiftList("share-token-1"));
+    const { unmount } = renderHook(() => useSharedGiftList(aShareToken()));
     await waitFor(() =>
       expect(subscribeToSharedGiftListChangedMock).toHaveBeenCalled(),
     );

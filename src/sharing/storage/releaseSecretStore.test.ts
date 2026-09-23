@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { hasReleaseSecret, saveReleaseSecret } from "./releaseSecretStore";
+import { aShareToken } from "../../test/shareTokens";
 
 describe("releaseSecretStore", () => {
   afterEach(() => {
@@ -12,7 +13,7 @@ describe("releaseSecretStore", () => {
     // Arrange — nothing.
 
     // Act
-    const result = hasReleaseSecret("share-token-1", "item-1");
+    const result = hasReleaseSecret(aShareToken(), "item-1");
 
     // Assert
     expect(result).toBe(false);
@@ -20,10 +21,10 @@ describe("releaseSecretStore", () => {
 
   it("HasReleaseSecret_ShouldReturnTrue_WhenSaveReleaseSecretWasCalledForTheSameShareTokenAndItem", () => {
     // Arrange
-    saveReleaseSecret("share-token-1", "item-1", "secret-abc");
+    saveReleaseSecret(aShareToken(), "item-1", "secret-abc");
 
     // Act
-    const result = hasReleaseSecret("share-token-1", "item-1");
+    const result = hasReleaseSecret(aShareToken(), "item-1");
 
     // Assert
     expect(result).toBe(true);
@@ -32,10 +33,10 @@ describe("releaseSecretStore", () => {
   it("HasReleaseSecret_ShouldReturnFalse_WhenTheSecretWasSavedForADifferentShareToken", () => {
     // Arrange — keyed on (shareToken, itemId), not itemId alone: item ids are not guaranteed
     // unique across lists.
-    saveReleaseSecret("share-token-1", "item-1", "secret-abc");
+    saveReleaseSecret(aShareToken(), "item-1", "secret-abc");
 
     // Act
-    const result = hasReleaseSecret("share-token-2", "item-1");
+    const result = hasReleaseSecret(aShareToken("2"), "item-1");
 
     // Assert
     expect(result).toBe(false);
@@ -43,38 +44,35 @@ describe("releaseSecretStore", () => {
 
   it("HasReleaseSecret_ShouldReturnFalse_WhenTheSecretWasSavedForADifferentItem", () => {
     // Arrange
-    saveReleaseSecret("share-token-1", "item-1", "secret-abc");
+    saveReleaseSecret(aShareToken(), "item-1", "secret-abc");
 
     // Act
-    const result = hasReleaseSecret("share-token-1", "item-2");
+    const result = hasReleaseSecret(aShareToken(), "item-2");
 
     // Assert
     expect(result).toBe(false);
   });
 
-  it("SaveReleaseSecret_ShouldWriteOnlyToLocalStorage_NeverToNetworkOrConsole", () => {
-    // Arrange — ARCHITECTURE.md "Nobody can see *who* reserved": `releaseSecret` travels only to
-    // this browser's localStorage. `fetch` and every console method are spied on so a call to
-    // either would fail this test — the strongest assertion this file can make about "never sent,
-    // never logged" from the browser side alone.
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("SaveReleaseSecret_ShouldWriteToLocalStorage_UnderTheShareTokenAndItemIdKey", () => {
+    // Arrange — GL-119 (Batch review): this test used to also spy on `fetch` and every console
+    // method, on the theory that doing so here proved `releaseSecret` is "never sent, never
+    // logged". It doesn't: this function trivially cannot do either — a reviewer's mutation probe
+    // (`console.log("secret", response.releaseSecret)` in `useReserveGift.ts`'s own success path,
+    // *before* this function is ever called) left this test, and every other one of this repo's
+    // sharing tests, green. That guarantee now lives in
+    // `useReserveGift.test.ts` ("...ShouldNeverSendOrLogTheReleaseSecret..."), bracketing the path
+    // where the secret first arrives off the wire. This test keeps only what this function can
+    // actually prove: the exact key it writes.
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
 
     // Act
-    saveReleaseSecret("share-token-1", "item-1", "super-secret-value");
+    saveReleaseSecret(aShareToken(), "item-1", "super-secret-value");
 
     // Assert
     expect(setItemSpy).toHaveBeenCalledWith(
-      "giftlist:reservation:share-token-1:item-1",
+      `giftlist:reservation:${aShareToken()}:item-1`,
       "super-secret-value",
     );
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(logSpy).not.toHaveBeenCalled();
-    expect(warnSpy).not.toHaveBeenCalled();
-    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it("HasReleaseSecret_ShouldReturnFalse_WhenLocalStorageThrows", () => {
@@ -86,7 +84,7 @@ describe("releaseSecretStore", () => {
     });
 
     // Act
-    const result = hasReleaseSecret("share-token-1", "item-1");
+    const result = hasReleaseSecret(aShareToken(), "item-1");
 
     // Assert
     expect(result).toBe(false);
@@ -99,7 +97,7 @@ describe("releaseSecretStore", () => {
     });
 
     // Act
-    const act = () => saveReleaseSecret("share-token-1", "item-1", "secret");
+    const act = () => saveReleaseSecret(aShareToken(), "item-1", "secret");
 
     // Assert
     expect(act).not.toThrow();

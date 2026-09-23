@@ -17,10 +17,32 @@
  * scope note), not a failure to show in a toast — `useReserveGift` branches on `kind ===
  * "already-reserved"` specifically to roll the optimistic UI back into a "someone just took this
  * one" state instead.
+ *
+ * `messaging.reply_timeout` (GL-42, folded from GL-40's own review) gets the same specific
+ * treatment `identity/api/authErrors.ts` already gives it, for a reason that matters more here
+ * than there: GL-41's decision on timed-out reserves is that a `ReplyTimeout` on `ReserveGift`
+ * tells this browser nothing about whether the command actually committed — Reservations may have
+ * saved the aggregate and only the *reply* got lost. Falling through to the generic `Unavailable`
+ * branch below (as this file used to) renders "try again shortly", which invites exactly the retry
+ * GL-41 warns about: if the first attempt *did* commit, the retry comes back
+ * `reservation.already_reserved`, and — with nothing to distinguish it from an ordinary
+ * lost-the-race — `useReserveGift` would render the guest's own earlier reservation as "someone
+ * just took this one". The `reply-timeout` kind exists so `useReserveGift` can special-case it
+ * instead: keep the optimistic "reserved-by-you" state (no button, no retry) permanently, unless
+ * and until a live push *positively confirms* the attempt landed (Batch 45 review, B1 — there is
+ * no symmetric "it didn't land" signal this hook can ever trust, so there is no rollback path at
+ * all here, only confirmation or silence). The message below says so plainly, for both of the
+ * outcomes that "no answer" could actually mean, rather than promising a resolution ("we'll update
+ * this once we know for sure") that may never arrive if the attempt genuinely never landed.
  */
 import { Code, ConnectError } from "@connectrpc/connect";
 
 const ERROR_CODE_TRAILER = "giftlist-error-code";
+
+// Mirrors RequestReplyErrors.ReplyTimeoutCode (buildingblocks/src/BuildingBlocks/Messaging/
+// RequestReply/RequestReplyErrors.cs) — identity/api/authErrors.ts's own precedent for this exact
+// constant.
+const REPLY_TIMEOUT_CODE = "messaging.reply_timeout";
 
 export type ReserveGiftErrorKind =
   | "already-reserved"
@@ -28,6 +50,7 @@ export type ReserveGiftErrorKind =
   | "expired"
   | "invalid-token"
   | "invalid-id"
+  | "reply-timeout"
   | "unavailable"
   | "unknown";
 
@@ -53,7 +76,8 @@ const KNOWN_ERROR_CODES: Readonly<Record<string, ReserveGiftErrorInfo>> = {
   },
   "reservation.giftlist_expired": {
     kind: "expired",
-    message: "This gift list has expired and can no longer accept reservations.",
+    message:
+      "This gift list has expired and can no longer accept reservations.",
   },
   "reservation.giftitem_not_found": {
     kind: "not-found",
@@ -78,13 +102,25 @@ const KNOWN_ERROR_CODES: Readonly<Record<string, ReserveGiftErrorInfo>> = {
     kind: "invalid-id",
     message: "That gift could not be identified. Please refresh and try again.",
   },
+  [REPLY_TIMEOUT_CODE]: {
+    kind: "reply-timeout",
+    message:
+      "This is taking longer than expected. If it went through, this gift is already " +
+      "reserved under this browser — nothing more to do. If it didn't, this gift can't be " +
+      "retried and stays unavailable until the list expires. We can't tell you which one " +
+      "happened.",
+  },
 };
 
-export function describeReserveGiftError(reason: unknown): ReserveGiftErrorInfo {
+export function describeReserveGiftError(
+  reason: unknown,
+): ReserveGiftErrorInfo {
   const error = ConnectError.from(reason);
   const giftlistErrorCode = error.metadata.get(ERROR_CODE_TRAILER);
 
-  const known = giftlistErrorCode ? KNOWN_ERROR_CODES[giftlistErrorCode] : undefined;
+  const known = giftlistErrorCode
+    ? KNOWN_ERROR_CODES[giftlistErrorCode]
+    : undefined;
   if (known) {
     return known;
   }

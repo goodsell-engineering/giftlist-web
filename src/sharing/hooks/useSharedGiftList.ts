@@ -20,6 +20,15 @@
  * reload (ARCHITECTURE.md "Realtime updates"). A push replaces `giftList` outright rather than
  * patching it in place — it is the exact same shape the query itself returns, from the same
  * interactor, so there is nothing to reconcile field-by-field.
+ *
+ * GL-42 (folded from GL-40's own review): a push that arrives while the *initial* read is still
+ * `"loading"` is buffered in `pendingPushRef`, not dropped — the query's own DB read and the
+ * broker delivering a change to this socket race each other with no ordering guarantee between
+ * them, so a projection change landing in that window used to leave a stale Reserve button up
+ * until the *next* push happened to arrive (self-correcting only via `already_reserved`, not
+ * before). The buffered push, if any, wins over the fetch's own response once the fetch settles —
+ * it is provably the fresher of the two, being a live change notification the fetch's own
+ * snapshot could not have captured.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -43,6 +52,10 @@ export function useSharedGiftList(shareToken: string) {
     status: "loading",
   });
   const requestId = useRef(0);
+  // The most recent push received while the initial read was still `"loading"` — see this file's
+  // own header. Reset at the start of every fetch (including `refetch`'s), so a buffered push
+  // from a *previous* cycle can never be applied to the fetch it did not race.
+  const pendingPushRef = useRef<SharedGiftListView | null>(null);
 
   // Deliberately no leading `setState({ status: "loading" })` here — the mount effect below calls
   // `runFetch` directly, and `useState`'s own initial value already covers "loading" for that
@@ -52,13 +65,18 @@ export function useSharedGiftList(shareToken: string) {
   // path is only ever reached from an event handler, never an effect.
   const runFetch = useCallback(() => {
     const thisRequest = ++requestId.current;
+    pendingPushRef.current = null;
 
     fetchSharedGiftList(shareToken).then(
       (giftList) => {
         if (requestId.current !== thisRequest) {
           return;
         }
-        setState({ status: "ready", giftList });
+        // A push that arrived while this fetch was in flight is fresher than the fetch's own
+        // response (this file's own header) — it wins outright rather than being merged.
+        const pushed = pendingPushRef.current;
+        pendingPushRef.current = null;
+        setState({ status: "ready", giftList: pushed ?? giftList });
       },
       (reason: unknown) => {
         if (requestId.current !== thisRequest) {
@@ -99,13 +117,20 @@ export function useSharedGiftList(shareToken: string) {
   useEffect(() => {
     const subscription = subscribeToSharedGiftListChanged(shareToken, {
       onData: (giftList) => {
-        // A push that arrives before the initial query has ever succeeded (or after it failed)
-        // must not fabricate a "ready" screen out of a loading/error one — this channel only ever
-        // refreshes an already-loaded page. `refetch()` (surfaced as "Try again" on the error
-        // screen) is the recovery path for those, not this one.
         if (stateRef.current.status === "ready") {
           setState({ status: "ready", giftList });
+          return;
         }
+        if (stateRef.current.status === "loading") {
+          // Buffered, not dropped — this file's own header. Applied by `runFetch` once the
+          // initial read settles, rather than fabricating a "ready" screen right here: the fetch
+          // in flight might still fail, and an `"error"` state (surfaced with its own "Try again")
+          // must win over a push that happened to arrive during the same window.
+          pendingPushRef.current = giftList;
+          return;
+        }
+        // `"error"`: this channel only ever refreshes an already-loaded page. `refetch()`
+        // (surfaced as "Try again" on the error screen) is the recovery path for this one.
       },
       // Best-effort: a live-channel failure (e.g. the socket never connects, or drops) leaves the
       // guest looking at the last-known-good read rather than replacing it with an error — the

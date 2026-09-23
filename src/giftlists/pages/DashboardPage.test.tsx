@@ -212,6 +212,45 @@ describe("DashboardPage", () => {
     expect(shareLinks).toHaveLength(0);
   });
 
+  it("DashboardPage_ShouldRenderExpiredNotExpiresAndDisableShare_WhenTheListHasAlreadyExpired", async () => {
+    // Arrange — GL-42 (Batch 43 review, H5): matches mockups/dashboard.html's own expired card
+    // ("12 items · expired 1 Jun 2026", `disabled` Share button) exactly.
+    const giftLists = [
+      aGiftList({
+        name: "Baby Shower — Theo",
+        expiresAt: new Date(Date.now() - 86_400_000).toISOString(),
+      }),
+    ];
+    fetchMyGiftListsMock.mockResolvedValue(giftLists);
+    renderDashboardPage();
+
+    // Act
+    await screen.findByText("Baby Shower — Theo");
+
+    // Assert
+    expect(screen.getByText(/expired/)).toBeInTheDocument();
+    expect(screen.queryByText(/\bexpires\b/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share" })).toBeDisabled();
+  });
+
+  it("DashboardPage_ShouldRenderExpiresNotExpiredAndLeaveShareEnabled_WhenTheListIsStillActive", async () => {
+    // Arrange
+    const giftLists = [
+      aGiftList({
+        expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+      }),
+    ];
+    fetchMyGiftListsMock.mockResolvedValue(giftLists);
+    renderDashboardPage();
+
+    // Act
+    await screen.findByText("Birthday Wishlist");
+
+    // Assert
+    expect(screen.getByText(/\bexpires\b/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share" })).toBeEnabled();
+  });
+
   // `DatePickerInput` (GL-122) opens its calendar on the browser's local "today" and only renders
   // that one month's days as clickable buttons — unlike the native `<input type="date">` this
   // replaced, a test can't just type an arbitrary far-future string into it. Every test here pins

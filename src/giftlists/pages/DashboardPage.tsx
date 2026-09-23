@@ -16,6 +16,11 @@
  * `userId`, which would render as a raw id run through `initialsFor`), `TopBar` is mounted with no
  * `right` slot here. Wiring the real name in is identity-side work outside this ticket's touched
  * files.
+ *
+ * GL-42 (Batch 43 review, H5): an expired card's meta line now reads "expired 1 Jun 2026", matching
+ * mockups/dashboard.html exactly, rather than "expires 1 Jun 2026" for a date already in the past
+ * — and its Share button is `disabled`, the same mockup precedent, rather than left clickable to
+ * copy a link to a list that can no longer accept reservations.
  */
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -202,7 +207,8 @@ function GiftListCard({ giftList }: { giftList: GiftListProjection }) {
         </Title>
         <Text size="sm" c="var(--gl-text-muted)">
           {giftList.items.length}{" "}
-          {giftList.items.length === 1 ? "item" : "items"} · expires{" "}
+          {giftList.items.length === 1 ? "item" : "items"} ·{" "}
+          {status === "expired" ? "expired" : "expires"}{" "}
           {formatCalendarDate(giftList.expiresAt)}
         </Text>
         <Group gap="xs" mt="auto">
@@ -217,6 +223,7 @@ function GiftListCard({ giftList }: { giftList: GiftListProjection }) {
           <Button
             variant="default"
             size="xs"
+            disabled={status === "expired"}
             onClick={() => void handleShare()}
           >
             {copied ? "Copied!" : "Share"}

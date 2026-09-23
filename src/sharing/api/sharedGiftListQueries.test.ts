@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchSharedGiftList } from "./sharedGiftListQueries";
 import { graphqlRequestAnonymous } from "../../giftlists/api/graphqlClient";
+import { aShareToken } from "../../test/shareTokens";
 
 vi.mock("../../giftlists/api/graphqlClient", () => ({
   graphqlRequestAnonymous: vi.fn(),
@@ -30,7 +31,7 @@ describe("fetchSharedGiftList", () => {
     });
 
     // Act
-    await fetchSharedGiftList("share-token-1");
+    await fetchSharedGiftList(aShareToken());
 
     // Assert
     const [query] = graphqlRequestAnonymousMock.mock.calls[0];
@@ -53,7 +54,7 @@ describe("fetchSharedGiftList", () => {
     });
 
     // Act
-    await fetchSharedGiftList("share-token-1");
+    await fetchSharedGiftList(aShareToken());
 
     // Assert
     const [query] = graphqlRequestAnonymousMock.mock.calls[0];
@@ -72,12 +73,12 @@ describe("fetchSharedGiftList", () => {
     });
 
     // Act
-    await fetchSharedGiftList("share-token-1");
+    await fetchSharedGiftList(aShareToken());
 
     // Assert
     expect(graphqlRequestAnonymousMock).toHaveBeenCalledWith(
       expect.stringContaining("sharedGiftList"),
-      { token: "share-token-1" },
+      { token: aShareToken() },
     );
   });
 
@@ -100,7 +101,7 @@ describe("fetchSharedGiftList", () => {
     graphqlRequestAnonymousMock.mockResolvedValue({ sharedGiftList: giftList });
 
     // Act
-    const result = await fetchSharedGiftList("share-token-1");
+    const result = await fetchSharedGiftList(aShareToken());
 
     // Assert
     expect(result).toEqual(giftList);

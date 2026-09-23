@@ -70,6 +70,19 @@ describe("ShareTokenPage", () => {
     expect(useSharedGiftListMock).not.toHaveBeenCalled();
   });
 
+  it("ShareTokenPage_ShouldRenderTheSameLoadingScreenAsTheGuestViewsOwnLoadingState_WhileOwnershipIsBeingChecked", () => {
+    // Arrange — GL-42, folded from GL-39's own review: a signed-in visitor used to see this
+    // "checking" screen immediately followed by a *differently*-laid-out one from `SharedListPage`
+    // once ownership resolved to "guest". Same `ui/LoadingScreen`, same "Log in" link, now.
+    setOwnership({ status: "checking" });
+
+    // Act
+    renderShareTokenPage();
+
+    // Assert
+    expect(screen.getByRole("link", { name: "Log in" })).toBeInTheDocument();
+  });
+
   it("ShareTokenPage_ShouldRenderTheGuestView_WhenTheViewerIsNotTheOwner", () => {
     // Arrange
     setOwnership({ status: "guest" });
