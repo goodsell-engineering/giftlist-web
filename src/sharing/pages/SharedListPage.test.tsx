@@ -12,6 +12,7 @@ import type {
   UseReserveGiftResult,
 } from "../hooks/useReserveGift";
 import type { ReserveGiftErrorInfo } from "../api/reservationsErrors";
+import { aShareToken } from "../../test/shareTokens";
 
 vi.mock("../hooks/useSharedGiftList", () => ({
   useSharedGiftList: vi.fn(),
@@ -51,7 +52,7 @@ function stateForConstant(uiState: ItemReservationUiState) {
 
 function renderSharedListPage() {
   return render(
-    <MemoryRouter initialEntries={["/share/kQ7v-2xR9mZpL3wYbT1s"]}>
+    <MemoryRouter initialEntries={[`/share/${aShareToken()}`]}>
       <Routes>
         <Route path="/share/:shareToken" element={<SharedListPage />} />
       </Routes>
@@ -64,6 +65,52 @@ describe("SharedListPage", () => {
     refetchMock.mockClear();
     reserveMock.mockClear();
     dismissConflictMock.mockClear();
+  });
+
+  it("SharedListPage_ShouldPassTheLiveItemsToUseReserveGift_WhenReady", () => {
+    // Arrange — useReserveGift's own reply-timeout reconciliation (this file's own header)
+    // depends on receiving the live server view, kept fresh over the page's own subscription.
+    setState({
+      status: "ready",
+      giftList: {
+        listId: "list-1",
+        name: "Ada's Birthday Wishlist",
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        items: [
+          {
+            itemId: "item-1",
+            name: "Headphones",
+            description: null,
+            url: null,
+            reserved: true,
+          },
+        ],
+      },
+    });
+    setReserveGift();
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    expect(useReserveGiftMock).toHaveBeenCalledWith(
+      aShareToken(),
+      expect.arrayContaining([
+        expect.objectContaining({ itemId: "item-1", reserved: true }),
+      ]),
+    );
+  });
+
+  it("SharedListPage_ShouldPassNoLiveItemsToUseReserveGift_WhenNotYetReady", () => {
+    // Arrange
+    setState({ status: "loading" });
+    setReserveGift();
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    expect(useReserveGiftMock).toHaveBeenCalledWith(aShareToken(), []);
   });
 
   it("SharedListPage_ShouldRenderTheListAndItsItems_WhenReady", () => {
@@ -125,9 +172,7 @@ describe("SharedListPage", () => {
 
     // Act
     renderSharedListPage();
-    await user.click(
-      screen.getByRole("button", { name: "Reserve this gift" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Reserve this gift" }));
 
     // Assert
     expect(reserveMock).toHaveBeenCalledWith("item-1");
@@ -253,7 +298,8 @@ describe("SharedListPage", () => {
     // one — the rest of the list stays usable.
     const error: ReserveGiftErrorInfo = {
       kind: "expired",
-      message: "This gift list has expired and can no longer accept reservations.",
+      message:
+        "This gift list has expired and can no longer accept reservations.",
     };
     setState({
       status: "ready",
@@ -286,10 +332,52 @@ describe("SharedListPage", () => {
     );
   });
 
-  it("SharedListPage_ShouldRenderTheExpiryDateWithNoExpiredBanner_WhenTheListIsAlreadyExpired", () => {
+  it("SharedListPage_ShouldShowReservedByYouAndTheHonestNotice_WhenTheRpcRepliedWithReplyTimeout", () => {
+    // Arrange — GL-41/GL-42: a reply-timeout stays optimistic ("reserved-by-you", no button) with
+    // an honest notice alongside it, not rolled back and not rendered as an ordinary failure.
+    const error: ReserveGiftErrorInfo = {
+      kind: "reply-timeout",
+      message:
+        "This is taking longer than expected. Your reservation may have gone through.",
+    };
+    setState({
+      status: "ready",
+      giftList: {
+        listId: "list-1",
+        name: "Ada's Birthday Wishlist",
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        items: [
+          {
+            itemId: "item-1",
+            name: "Headphones",
+            description: null,
+            url: null,
+            reserved: false,
+          },
+        ],
+      },
+    });
+    setReserveGift({
+      stateFor: stateForConstant("reserved-by-you"),
+      errorFor: (itemId) => (itemId === "item-1" ? error : null),
+    });
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    const itemRow = screen.getByText("Headphones").closest("li");
+    expect(itemRow).toHaveTextContent("You reserved this");
+    expect(itemRow).toHaveTextContent(/may have gone through/i);
+    expect(
+      screen.queryByRole("button", { name: /reserve this gift/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("SharedListPage_ShouldRenderAnExpiredBannerInsteadOfTheCountdown_WhenTheListIsAlreadyExpired", () => {
     // Arrange — Ryan's decision, 2026-09-16: an expired list stays visible through the share
-    // link, read-only. The expired banner is GL-42's job, not this ticket's — this pins that this
-    // ticket does not jump ahead and build one.
+    // link, read-only. GL-42 is the ticket that renders the expired banner this test now pins —
+    // "in 0 days" (the old, clamped-at-zero countdown) reads as "today" to a guest, not "over".
     setState({
       status: "ready",
       giftList: {
@@ -306,11 +394,44 @@ describe("SharedListPage", () => {
 
     // Assert
     expect(screen.getByText("Ada's Birthday Wishlist")).toBeInTheDocument();
-    expect(screen.queryByText(/expired/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/expired/i);
+    expect(screen.queryByText(/⏳/)).not.toBeInTheDocument();
+  });
+
+  it("SharedListPage_ShouldDisableTheReserveButton_WhenTheListIsAlreadyExpired", () => {
+    // Arrange — GL-42's other half: the guest never gets as far as the RPC's own
+    // `reservation.giftlist_expired` rejection, because the button is disabled first.
+    setState({
+      status: "ready",
+      giftList: {
+        listId: "list-1",
+        name: "Ada's Birthday Wishlist",
+        expiresAt: new Date(Date.now() - 86_400_000).toISOString(),
+        items: [
+          {
+            itemId: "item-1",
+            name: "Headphones",
+            description: null,
+            url: null,
+            reserved: false,
+          },
+        ],
+      },
+    });
+    setReserveGift({ stateFor: stateForConstant("available") });
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    expect(
+      screen.getByRole("button", { name: "Reserve this gift" }),
+    ).toBeDisabled();
   });
 
   it("SharedListPage_ShouldShowALoadingMessage_WhenStatusIsLoading", () => {
-    // Arrange
+    // Arrange — the same `ui/LoadingScreen` (and copy) `ShareTokenPage`'s own "checking" branch
+    // renders, so the two read as one continuous wait (GL-42, folded from GL-39's own review).
     setState({ status: "loading" });
     setReserveGift();
 
@@ -318,7 +439,7 @@ describe("SharedListPage", () => {
     renderSharedListPage();
 
     // Assert
-    expect(screen.getByText("Loading shared list…")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
   it("SharedListPage_ShouldShowTheGuestFacingMessage_WhenTheTokenDoesNotResolve", () => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { subscribeToSharedGiftListChanged } from "./sharedGiftListSubscription";
 import type { SharedGiftListView } from "./sharedGiftListQueries";
+import { aShareToken } from "../../test/shareTokens";
 
 type Listener = (event: { data?: string }) => void;
 
@@ -67,7 +68,7 @@ function createHarness() {
   const onData = vi.fn();
   const onError = vi.fn();
   const subscription = subscribeToSharedGiftListChanged(
-    "share-token-1",
+    aShareToken(),
     { onData, onError },
     factory,
   );
@@ -93,10 +94,9 @@ describe("subscribeToSharedGiftListChanged", () => {
 
     // Assert — the exact subprotocol HotChocolate's MapGraphQL speaks
     // (Gateway.IntegrationTests/Support/GraphQlSubscriptionClient.cs's own precedent).
-    expect(factory).toHaveBeenCalledWith(
-      expect.stringMatching(/\/graphql$/),
-      ["graphql-transport-ws"],
-    );
+    expect(factory).toHaveBeenCalledWith(expect.stringMatching(/\/graphql$/), [
+      "graphql-transport-ws",
+    ]);
   });
 
   it("SubscribeToSharedGiftListChanged_ShouldSendConnectionInit_WhenTheSocketOpens", () => {
@@ -126,7 +126,7 @@ describe("subscribeToSharedGiftListChanged", () => {
     };
     expect(subscribeMessage.type).toBe("subscribe");
     expect(subscribeMessage.payload.variables).toEqual({
-      token: "share-token-1",
+      token: aShareToken(),
     });
     expect(subscribeMessage.payload.query).toContain("sharedGiftListChanged");
   });
@@ -173,7 +173,10 @@ describe("subscribeToSharedGiftListChanged", () => {
       payload: [
         {
           message: "A share token must be 21 alphanumeric characters.",
-          extensions: { code: "BAD_USER_INPUT", errorCode: "gateway.invalid_share_token" },
+          extensions: {
+            code: "BAD_USER_INPUT",
+            errorCode: "gateway.invalid_share_token",
+          },
         },
       ],
     });

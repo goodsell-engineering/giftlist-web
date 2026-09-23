@@ -28,6 +28,14 @@
  * 3c. RPC fails any other way (expired list, unavailable, ...) → same rollback out of the
  *     optimistic set, but into `errors` instead of the conflict set — an ordinary, dismissable
  *     per-item error message.
+ * 3d. RPC fails with `reply-timeout` (GL-42, folded from GL-40's own review) → deliberately *not*
+ *     rolled back. GL-41's decision is that this browser cannot tell whether `ReserveGift` actually
+ *     committed — only that the reply itself didn't arrive in time — so snapping back to
+ *     `available` would invite a retry that, if the first attempt *did* land, comes back
+ *     `reservation.already_reserved` and would misrender the guest's own reservation as someone
+ *     else's. The item stays optimistic (still `reserved-by-you`, no button, so there is nothing
+ *     left to click anyway) with an honest "may have gone through" notice in `errors`, and is
+ *     reconciled the next time the live server view of that item arrives — see `items` below.
  *
  * **The other race** — a *different* guest reserves an item this browser has not touched at all,
  * and the news arrives over `sharedGiftListChanged(token)` before this guest ever clicks — needs
@@ -35,6 +43,14 @@
  * optimistic/conflict/local-secret checks are exhausted, so the "Reserve this gift" button simply
  * stops being rendered on `SharedListPage`'s next render. There is nothing to roll back, because
  * nothing here was ever committed to that item in the first place.
+ *
+ * **`items`** is `SharedListPage`'s own live list (from `useSharedGiftList`) — passed in solely so
+ * this hook can watch for the one push it *does* need to react to: an item this browser's own
+ * reserve attempt timed out on (3d above). `reserved: false` on that item is the tie-breaker
+ * showing the attempt genuinely never landed (back to `available`, retry now safe);
+ * `reserved: true` confirms it landed (stays `reserved-by-you`, the uncertain notice is cleared).
+ * Every other item is untouched by this — the ordinary race above needs no reconciliation, only
+ * this ambiguous one does.
  */
 import { useCallback, useState } from "react";
 
@@ -43,13 +59,18 @@ import {
   describeReserveGiftError,
   type ReserveGiftErrorInfo,
 } from "../api/reservationsErrors";
-import { hasReleaseSecret, saveReleaseSecret } from "../storage/releaseSecretStore";
+import {
+  hasReleaseSecret,
+  saveReleaseSecret,
+} from "../storage/releaseSecretStore";
+
+export interface ReserveGiftLiveItem {
+  itemId: string;
+  reserved: boolean;
+}
 
 export type ItemReservationUiState =
-  | "available"
-  | "reserved-by-you"
-  | "just-taken"
-  | "reserved";
+  "available" | "reserved-by-you" | "just-taken" | "reserved";
 
 export interface UseReserveGiftResult {
   reserve: (itemId: string) => Promise<void>;
@@ -59,7 +80,10 @@ export interface UseReserveGiftResult {
   dismissConflict: (itemId: string) => void;
 }
 
-function withoutId(ids: ReadonlySet<string>, itemId: string): ReadonlySet<string> {
+function withoutId(
+  ids: ReadonlySet<string>,
+  itemId: string,
+): ReadonlySet<string> {
   if (!ids.has(itemId)) {
     return ids;
   }
@@ -68,36 +92,64 @@ function withoutId(ids: ReadonlySet<string>, itemId: string): ReadonlySet<string
   return next;
 }
 
-export function useReserveGift(shareToken: string): UseReserveGiftResult {
+function withoutError(
+  errors: ReadonlyMap<string, ReserveGiftErrorInfo>,
+  itemId: string,
+): ReadonlyMap<string, ReserveGiftErrorInfo> {
+  if (!errors.has(itemId)) {
+    return errors;
+  }
+  const next = new Map(errors);
+  next.delete(itemId);
+  return next;
+}
+
+// A stable default for `items` below — a `= []` default parameter is re-evaluated on every call,
+// producing a *new* array each render, which the render-time reconciliation further down would then
+// see as "the live items changed" on every single render (an infinite loop: every one of this
+// file's own tests that calls `useReserveGift(shareToken)` with no second argument hit exactly
+// this before this constant existed).
+const NO_LIVE_ITEMS: readonly ReserveGiftLiveItem[] = [];
+
+export function useReserveGift(
+  shareToken: string,
+  items: readonly ReserveGiftLiveItem[] = NO_LIVE_ITEMS,
+): UseReserveGiftResult {
   const [optimisticIds, setOptimisticIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const [conflictIds, setConflictIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const [errors, setErrors] = useState<ReadonlyMap<string, ReserveGiftErrorInfo>>(
-    () => new Map(),
+  // Items awaiting a `reply-timeout` verdict (3d in this file's own header) — a subset of
+  // `optimisticIds`, tracked separately because it changes what a *following* `already-reserved`
+  // means for that item (see the catch block below) and what the render-time reconciliation further
+  // down watches for.
+  const [timedOutIds, setTimedOutIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
   );
+  const [errors, setErrors] = useState<
+    ReadonlyMap<string, ReserveGiftErrorInfo>
+  >(() => new Map());
 
   const reserve = useCallback(
     async (itemId: string) => {
       // Guards against a double-submit landing between the click and the re-render that removes
       // the button (React state updates are not synchronous) — a second call for an item already
-      // mid-flight, already ours, or already lost is a no-op rather than a second RPC.
+      // mid-flight, already ours, or already lost is a no-op rather than a second RPC. An item
+      // awaiting a reply-timeout verdict is still in `optimisticIds` (3d), so this same check is
+      // also what makes GL-41's honesty rule hold: nothing in this hook can ever send a *second*
+      // `ReserveGift` for that item — and so misrender the guest's own reservation as someone
+      // else's — until the render-time reconciliation below has resolved the ambiguity one way or the
+      // other and removed it from `optimisticIds` again.
       if (optimisticIds.has(itemId) || hasReleaseSecret(shareToken, itemId)) {
         return;
       }
 
       setOptimisticIds((prev) => new Set(prev).add(itemId));
       setConflictIds((prev) => withoutId(prev, itemId));
-      setErrors((prev) => {
-        if (!prev.has(itemId)) {
-          return prev;
-        }
-        const next = new Map(prev);
-        next.delete(itemId);
-        return next;
-      });
+      setTimedOutIds((prev) => withoutId(prev, itemId));
+      setErrors((prev) => withoutError(prev, itemId));
 
       try {
         const response = await reservationsClient.reserveGift({
@@ -110,6 +162,15 @@ export function useReserveGift(shareToken: string): UseReserveGiftResult {
         setOptimisticIds((prev) => withoutId(prev, itemId));
       } catch (reason) {
         const info = describeReserveGiftError(reason);
+
+        if (info.kind === "reply-timeout") {
+          // 3d: stays optimistic. Not rolled back, not moved into `conflictIds` — see this file's
+          // own header and reservationsErrors.ts's for why.
+          setTimedOutIds((prev) => new Set(prev).add(itemId));
+          setErrors((prev) => new Map(prev).set(itemId, info));
+          return;
+        }
+
         setOptimisticIds((prev) => withoutId(prev, itemId));
 
         if (info.kind === "already-reserved") {
@@ -121,6 +182,38 @@ export function useReserveGift(shareToken: string): UseReserveGiftResult {
     },
     [shareToken, optimisticIds],
   );
+
+  // "Until a push decides" (this file's own header, 3d): the next time the live server view of a
+  // timed-out item arrives — a push, or simply `items` catching up once the list is `ready` —
+  // that view is the tie-breaker. `reserved: false` means the attempt genuinely never landed, so
+  // the item goes back to being reservable; `reserved: true` confirms it (optimistically, this
+  // browser's own attempt) and only the uncertain notice needs clearing.
+  //
+  // Adjusted synchronously during render, not inside a `useEffect` — this is React's own
+  // "adjusting state when a prop changes" pattern (there is no external system to synchronize
+  // with here, only derived state), and `react-hooks/set-state-in-effect` flags the effect-shaped
+  // version of exactly this as an anti-pattern. `reconciledItems` is the guard that makes it safe:
+  // without it, calling `setState` unconditionally on every render would loop forever. A `useState`
+  // rather than a `useRef` for that guard, on purpose — `react-hooks/refs` (a newer,
+  // compiler-aligned rule than the "adjusting state" pattern React's own docs still show with a
+  // ref) flags reading or writing a ref's `current` during render; the fix the same docs describe
+  // elsewhere for this exact situation is a second piece of state instead.
+  const [reconciledItems, setReconciledItems] = useState(items);
+  if (reconciledItems !== items) {
+    setReconciledItems(items);
+
+    for (const item of items) {
+      if (!timedOutIds.has(item.itemId)) {
+        continue;
+      }
+
+      setTimedOutIds((prev) => withoutId(prev, item.itemId));
+      setErrors((prev) => withoutError(prev, item.itemId));
+      if (!item.reserved) {
+        setOptimisticIds((prev) => withoutId(prev, item.itemId));
+      }
+    }
+  }
 
   const stateFor = useCallback(
     (itemId: string, serverReserved: boolean): ItemReservationUiState => {

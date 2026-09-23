@@ -37,11 +37,9 @@ describe("describeReserveGiftError", () => {
 
   it("DescribeReserveGiftError_ShouldReturnNotFound_WhenTheTrailerCarriesReservationGiftlistNotFoundCode", () => {
     // Arrange
-    const error = new ConnectError(
-      "No such gift list exists.",
-      Code.NotFound,
-      { "giftlist-error-code": "reservation.giftlist_not_found" },
-    );
+    const error = new ConnectError("No such gift list exists.", Code.NotFound, {
+      "giftlist-error-code": "reservation.giftlist_not_found",
+    });
 
     // Act
     const result = describeReserveGiftError(error);
@@ -126,9 +124,38 @@ describe("describeReserveGiftError", () => {
     expect(result.kind).toBe("invalid-id");
   });
 
+  it("DescribeReserveGiftError_ShouldReturnReplyTimeout_WhenTheTrailerCarriesTheReplyTimeoutCode", () => {
+    // Arrange — GL-41's decision: a reply-timeout on ReserveGift is not an ordinary failure, since
+    // Reservations may have committed the reservation despite the reply itself getting lost.
+    const error = new ConnectError("unavailable", Code.Unavailable, {
+      "giftlist-error-code": "messaging.reply_timeout",
+    });
+
+    // Act
+    const result = describeReserveGiftError(error);
+
+    // Assert
+    expect(result.kind).toBe("reply-timeout");
+    expect(result.message).toMatch(/may have gone through/i);
+  });
+
   it("DescribeReserveGiftError_ShouldReturnUnavailable_WhenStatusIsUnavailableWithNoTrailer", () => {
-    // Arrange — e.g. RequestReplyBridge's own reply-timeout, mapped generically.
+    // Arrange — a genuine outage: no trailer at all to say otherwise.
     const error = new ConnectError("unavailable", Code.Unavailable);
+
+    // Act
+    const result = describeReserveGiftError(error);
+
+    // Assert
+    expect(result.kind).toBe("unavailable");
+  });
+
+  it("DescribeReserveGiftError_ShouldReturnGenericUnavailable_WhenUnavailableCarriesADifferentErrorCodeTrailer", () => {
+    // Arrange — an UNAVAILABLE that carries a real code, just not the reply-timeout one, must not
+    // be mistaken for "may still be processing".
+    const error = new ConnectError("unavailable", Code.Unavailable, {
+      "giftlist-error-code": "messaging.broker_unreachable",
+    });
 
     // Act
     const result = describeReserveGiftError(error);

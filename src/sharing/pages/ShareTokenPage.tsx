@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
-import { Center, Loader, Stack, Text } from "@mantine/core";
+import { Link, useParams } from "react-router-dom";
+import { Anchor } from "@mantine/core";
 
 import { useShareTokenOwnership } from "../hooks/useShareTokenOwnership";
 import ShareOwnerInterstitialPage from "./ShareOwnerInterstitialPage";
 import SharedListPage from "./SharedListPage";
+import { LoadingScreen } from "../../ui/LoadingScreen";
 
 /**
  * The real `/share/:shareToken` route element (GL-39) — the single place that decides between
@@ -24,9 +25,18 @@ import SharedListPage from "./SharedListPage";
  * navigation from one share token to another — the `key` below forces a fresh mount instead of
  * carrying that per-token choice over to a list this browser did not just choose to peek at.
  *
- * GL-124: the only visual change this story makes here is the "checking" branch, restyled onto a
+ * GL-124: the only visual change that story made here was the "checking" branch, restyled onto a
  * Mantine `Center`/`Loader`. The ownership decision itself, and which of the two child pages gets
  * rendered for "owner"/"guest", are unchanged.
+ *
+ * GL-42 (folded from GL-39's own review): that "checking" branch now renders through
+ * `ui/LoadingScreen` — the same component `SharedListPage`'s own "loading" branch renders through
+ * — rather than its own hand-rolled, slightly different markup. A signed-in visitor who turns out
+ * to be an ordinary guest used to see this file's bare loading screen while
+ * `useShareTokenOwnership` checked `myGiftLists`, immediately followed by a second,
+ * differently-laid-out one from `SharedListPage` once ownership resolved and its own fetch
+ * started — two genuinely separate network round trips, but rendered identically now, so they read
+ * as one continuous wait rather than the page visibly flashing and re-laying-out between them.
  */
 export default function ShareTokenPage() {
   const { shareToken } = useParams<{ shareToken: string }>();
@@ -45,15 +55,17 @@ function ShareTokenGate({ shareToken }: { shareToken: string }) {
   const [bypassInterstitial, setBypassInterstitial] = useState(false);
 
   if (ownership.status === "checking") {
+    // Same `topBarRight` `SharedListPage` renders for its own guest-facing states, so this loading
+    // screen and the one that may immediately follow it look identical — see this file's own
+    // header.
     return (
-      <Center component="main" mih="60vh">
-        <Stack align="center" gap="sm">
-          <Loader color="primary" />
-          <Text c="dimmed" size="sm">
-            Loading…
-          </Text>
-        </Stack>
-      </Center>
+      <LoadingScreen
+        topBarRight={
+          <Anchor component={Link} to="/login" size="sm">
+            Log in
+          </Anchor>
+        }
+      />
     );
   }
 

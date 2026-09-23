@@ -7,7 +7,6 @@ import {
   Button,
   Center,
   Group,
-  Loader,
   Paper,
   Stack,
   Text,
@@ -18,10 +17,12 @@ import { useSharedGiftList } from "../hooks/useSharedGiftList";
 import {
   useReserveGift,
   type ItemReservationUiState,
+  type ReserveGiftLiveItem,
 } from "../hooks/useReserveGift";
 import type { ReserveGiftErrorInfo } from "../api/reservationsErrors";
 import type { SharedGiftItem } from "../api/sharedGiftListQueries";
 import { TopBar } from "../../ui/TopBar";
+import { LoadingScreen } from "../../ui/LoadingScreen";
 import { formatCalendarDate } from "../../ui/dates";
 
 /**
@@ -41,12 +42,13 @@ import { formatCalendarDate } from "../../ui/dates";
  * `SharedGiftItem.reserved` (a plain boolean, never who).
  *
  * An expired list still renders here, read-only — Ryan's decision, 2026-09-16, recorded on GL-32:
- * expiry gates *reserving*, not *viewing*. The expired banner and disabled-reserve UI are GL-42's
- * job, not this page's; `expiresAt` is rendered plainly as a countdown, with no "expired" branch —
- * `daysRemaining` below is clamped at 0 rather than going negative for exactly this reason. A
- * reserve attempt against an expired list still reaches the RPC and comes back
- * `reservation.giftlist_expired` — rendered here as an ordinary per-item error, same as any other
- * — GL-42 is what stops the guest from ever getting that far.
+ * expiry gates *reserving*, not *viewing*. GL-42 is what this file's own header used to defer the
+ * expired banner and disabled-reserve UI to; it is what this version of the file actually is —
+ * `isListExpired` below replaces the countdown with a plain "this list has expired" notice and
+ * disables every `available` item's Reserve button, rather than sending the guest all the way to
+ * the RPC just to learn the same thing from `reservation.giftlist_expired` (still the answer for
+ * anyone who gets there some other way — e.g. a button click that raced the list's own expiry —
+ * rendered exactly as before, as an ordinary per-item error).
  *
  * No Release button — mockups/list-shared-anonymous.html shows one next to "✓ You reserved this",
  * but there is still no Release RPC in scope to back it with (`reservationsClient.ts` exposes only
@@ -55,11 +57,12 @@ import { formatCalendarDate } from "../../ui/dates";
  * that RPC, so the badge alone is what renders for that state — see this story's own report for
  * the deviation note.
  */
-/** Clamped at 0 rather than going negative for an already-expired list — see this component's own
- * doc comment on why an expired list gets no "expired" wording here. A standalone helper (not an
- * inline `Date.now()` call in the render body) for the same reason `DashboardPage.tsx`'s
- * `giftListStatus` is one: `react-hooks/purity` flags an impure call written directly in a
- * component/hook body, not one reached through an ordinary function call. */
+/** Clamped at 0 rather than going negative — once the list is expired this value is never
+ * rendered (see `isListExpired` below), but `stateFor`'s own contract still wants a non-negative
+ * number for the not-yet-expired path. A standalone helper (not an inline `Date.now()` call in the
+ * render body) for the same reason `DashboardPage.tsx`'s `giftListStatus` is one:
+ * `react-hooks/purity` flags an impure call written directly in a component/hook body, not one
+ * reached through an ordinary function call. */
 function daysRemainingUntil(expiresAt: string): number {
   return Math.max(
     0,
@@ -67,12 +70,26 @@ function daysRemainingUntil(expiresAt: string): number {
   );
 }
 
+/** Same "standalone function, not an inline `Date.now()`" reasoning as `daysRemainingUntil`
+ * above — query-time, never a stored/TTL flag (GL-41's own decision: expiry is a predicate,
+ * evaluated fresh, never a delete). */
+function isListExpired(expiresAt: string): boolean {
+  return new Date(expiresAt).getTime() <= Date.now();
+}
+
+// Stable identity across renders while `state.status !== "ready"` — `useReserveGift`'s own
+// reconciliation effect runs off this array's contents, and a fresh `[]` literal on every render
+// would otherwise fire it for no reason.
+const NO_LIVE_ITEMS: readonly ReserveGiftLiveItem[] = [];
+
 export default function SharedListPage() {
   const { shareToken } = useParams<{ shareToken: string }>();
   const token = shareToken ?? "";
   const { state, refetch } = useSharedGiftList(token);
-  const { reserve, stateFor, errorFor, dismissConflict } =
-    useReserveGift(token);
+  const { reserve, stateFor, errorFor, dismissConflict } = useReserveGift(
+    token,
+    state.status === "ready" ? state.giftList.items : NO_LIVE_ITEMS,
+  );
 
   if (!shareToken) {
     // The router only ever matches this route with a :shareToken param — defensive, not
@@ -80,30 +97,18 @@ export default function SharedListPage() {
     return null;
   }
 
-  const topBar = (
-    <TopBar
-      right={
-        <Anchor component={Link} to="/login" size="sm">
-          Log in
-        </Anchor>
-      }
-    />
+  const topBarRight = (
+    <Anchor component={Link} to="/login" size="sm">
+      Log in
+    </Anchor>
   );
+  const topBar = <TopBar right={topBarRight} />;
 
   if (state.status === "loading") {
-    return (
-      <>
-        {topBar}
-        <Center component="main" mih="60vh">
-          <Stack align="center" gap="sm">
-            <Loader color="primary" />
-            <Text c="dimmed" size="sm">
-              Loading shared list…
-            </Text>
-          </Stack>
-        </Center>
-      </>
-    );
+    // Same `ui/LoadingScreen`, same `topBarRight`, as `ShareTokenPage`'s own "checking" branch —
+    // GL-42 (folded from GL-39's own review): a signed-in visitor who isn't this list's owner
+    // used to see that screen immediately followed by a *differently*-laid-out one from here.
+    return <LoadingScreen topBarRight={topBarRight} />;
   }
 
   if (state.status === "error") {
@@ -127,6 +132,7 @@ export default function SharedListPage() {
   }
 
   const { giftList } = state;
+  const isExpired = isListExpired(giftList.expiresAt);
   const daysRemaining = daysRemainingUntil(giftList.expiresAt);
 
   return (
@@ -146,10 +152,24 @@ export default function SharedListPage() {
           <Title order={1} size="h2" mt={8} mb={6}>
             {giftList.name}
           </Title>
-          <Text c="accent" fw={600} size="sm">
-            ⏳ Expires in {daysRemaining} day{daysRemaining === 1 ? "" : "s"} —{" "}
-            {formatCalendarDate(giftList.expiresAt)}
-          </Text>
+          {isExpired ? (
+            <Alert
+              color="danger"
+              variant="light"
+              mt={8}
+              maw={480}
+              mx="auto"
+              ta="left"
+            >
+              This list expired on {formatCalendarDate(giftList.expiresAt)}.
+              Items can no longer be reserved.
+            </Alert>
+          ) : (
+            <Text c="accent" fw={600} size="sm">
+              ⏳ Expires in {daysRemaining} day{daysRemaining === 1 ? "" : "s"}{" "}
+              — {formatCalendarDate(giftList.expiresAt)}
+            </Text>
+          )}
         </Box>
 
         <Text
@@ -183,6 +203,7 @@ export default function SharedListPage() {
                 item={item}
                 uiState={stateFor(item.itemId, item.reserved)}
                 error={errorFor(item.itemId)}
+                reservingDisabled={isExpired}
                 onReserve={() => void reserve(item.itemId)}
                 onDismissConflict={() => dismissConflict(item.itemId)}
               />
@@ -198,6 +219,10 @@ interface SharedGiftItemRowProps {
   item: SharedGiftItem;
   uiState: ItemReservationUiState;
   error: ReserveGiftErrorInfo | null;
+  /** The list itself has expired (GL-42) — the button stays visible, disabled, rather than
+   * disappearing outright, the same treatment `DashboardPage.tsx`'s expired card gives its own
+   * Share button. */
+  reservingDisabled: boolean;
   onReserve: () => void;
   onDismissConflict: () => void;
 }
@@ -206,6 +231,7 @@ function SharedGiftItemRow({
   item,
   uiState,
   error,
+  reservingDisabled,
   onReserve,
   onDismissConflict,
 }: SharedGiftItemRowProps) {
@@ -253,7 +279,7 @@ function SharedGiftItemRow({
 
         <Group gap={10} wrap="nowrap" style={{ flexShrink: 0 }}>
           {uiState === "available" && (
-            <Button size="sm" onClick={onReserve}>
+            <Button size="sm" onClick={onReserve} disabled={reservingDisabled}>
               Reserve this gift
             </Button>
           )}
