@@ -315,9 +315,13 @@ describe("useReserveGift", () => {
     expect(reserveGiftMock).toHaveBeenCalledTimes(1);
   });
 
-  it("UseReserveGift_ShouldRevertToAvailable_WhenTheLiveItemsShowTheTimedOutAttemptNeverLanded", async () => {
-    // Arrange — "until a push decides" (this file's own header): the server's own view is the
-    // tie-breaker for an ambiguous reply-timeout.
+  it("UseReserveGift_ShouldStayReservedByYouWithTheNoticeIntact_WhenAPushArrivesAboutADifferentItem", async () => {
+    // Arrange — Batch 45 review, B1: `items`' identity changes on *every* push for the share
+    // token, including one about an item this browser never touched. Item A timed out; a push
+    // about item B (still unrelated, still `reserved: false` on A, exactly as it always was)
+    // must not be read as "A's attempt never landed" — that would re-arm the double-submit guard
+    // and open the door to a retry that, if A's first attempt actually committed, comes back
+    // `already_reserved` and renders A as "someone else took it".
     reserveGiftMock.mockRejectedValue(replyTimeoutError());
     const { result, rerender } = renderHook(
       ({ items }: { items: ReserveGiftLiveItem[] }) =>
@@ -325,29 +329,32 @@ describe("useReserveGift", () => {
       { initialProps: { items: [] as ReserveGiftLiveItem[] } },
     );
     await act(async () => {
-      await result.current.reserve("item-1");
+      await result.current.reserve("item-a");
     });
-    expect(result.current.stateFor("item-1", false)).toBe("reserved-by-you");
+    expect(result.current.stateFor("item-a", false)).toBe("reserved-by-you");
 
-    // Act
+    // Act — a different guest reserves a *different* item; the live list's own identity changes,
+    // but item A's own entry is unchanged (still `reserved: false`, as it always was).
     act(() => {
-      rerender({ items: [{ itemId: "item-1", reserved: false }] });
+      rerender({
+        items: [
+          { itemId: "item-a", reserved: false },
+          { itemId: "item-b", reserved: true },
+        ],
+      });
     });
 
-    // Assert — reservable again, honestly, with no leftover notice.
-    expect(result.current.stateFor("item-1", false)).toBe("available");
-    expect(result.current.errorFor("item-1")).toBeNull();
+    // Assert — A stays exactly as ambiguous as it was: still "reserved-by-you", notice intact.
+    expect(result.current.stateFor("item-a", false)).toBe("reserved-by-you");
+    expect(result.current.errorFor("item-a")?.kind).toBe("reply-timeout");
 
-    // Act — a fresh attempt now reaches the RPC for real.
-    reserveGiftMock.mockResolvedValue(
-      resolvedReserveGiftResponse("secret-abc"),
-    );
+    // Act — and still no second RPC is reachable for A.
     await act(async () => {
-      await result.current.reserve("item-1");
+      await result.current.reserve("item-a");
     });
 
     // Assert
-    expect(reserveGiftMock).toHaveBeenCalledTimes(2);
+    expect(reserveGiftMock).toHaveBeenCalledTimes(1);
   });
 
   it("UseReserveGift_ShouldStayReservedByYouAndClearTheNotice_WhenTheLiveItemsConfirmItWasReserved", async () => {

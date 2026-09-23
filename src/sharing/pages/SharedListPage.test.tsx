@@ -338,7 +338,8 @@ describe("SharedListPage", () => {
     const error: ReserveGiftErrorInfo = {
       kind: "reply-timeout",
       message:
-        "This is taking longer than expected. Your reservation may have gone through.",
+        "This is taking longer than expected. If it went through, this gift is already " +
+        "reserved. If it didn't, it stays unavailable until the list expires.",
     };
     setState({
       status: "ready",
@@ -368,7 +369,7 @@ describe("SharedListPage", () => {
     // Assert
     const itemRow = screen.getByText("Headphones").closest("li");
     expect(itemRow).toHaveTextContent("You reserved this");
-    expect(itemRow).toHaveTextContent(/may have gone through/i);
+    expect(itemRow).toHaveTextContent(/unavailable until the list expires/i);
     expect(
       screen.queryByRole("button", { name: /reserve this gift/i }),
     ).not.toBeInTheDocument();

@@ -29,13 +29,19 @@
  *     optimistic set, but into `errors` instead of the conflict set — an ordinary, dismissable
  *     per-item error message.
  * 3d. RPC fails with `reply-timeout` (GL-42, folded from GL-40's own review) → deliberately *not*
- *     rolled back. GL-41's decision is that this browser cannot tell whether `ReserveGift` actually
- *     committed — only that the reply itself didn't arrive in time — so snapping back to
- *     `available` would invite a retry that, if the first attempt *did* land, comes back
- *     `reservation.already_reserved` and would misrender the guest's own reservation as someone
- *     else's. The item stays optimistic (still `reserved-by-you`, no button, so there is nothing
- *     left to click anyway) with an honest "may have gone through" notice in `errors`, and is
- *     reconciled the next time the live server view of that item arrives — see `items` below.
+ *     rolled back, ever, by anything short of the list itself expiring. GL-41's decision: expiry is
+ *     the *only* escape hatch for a timed-out reserve. This browser cannot tell whether
+ *     `ReserveGift` actually committed — only that the reply itself didn't arrive in time — so
+ *     snapping back to `available` on anything less than a positive confirmation would invite a
+ *     retry that, if the first attempt *did* land, comes back `reservation.already_reserved` and
+ *     would misrender the guest's own reservation as someone else's (Batch 45 review, B1: absence
+ *     of news about this item is not evidence about this item — a push can arrive, changing
+ *     `items`' identity, for a reason that has nothing to do with this item at all). The item stays
+ *     optimistic (still `reserved-by-you`, no button, so there is nothing left to click anyway)
+ *     with an honest notice in `errors` naming *both* possible outcomes, and is only ever resolved
+ *     by a *positive* confirmation — see `items` below and the `already-reserved` branch of the
+ *     catch block, both of which only ever move an item *out* of ambiguity, never back to
+ *     `available`.
  *
  * **The other race** — a *different* guest reserves an item this browser has not touched at all,
  * and the news arrives over `sharedGiftListChanged(token)` before this guest ever clicks — needs
@@ -46,11 +52,15 @@
  *
  * **`items`** is `SharedListPage`'s own live list (from `useSharedGiftList`) — passed in solely so
  * this hook can watch for the one push it *does* need to react to: an item this browser's own
- * reserve attempt timed out on (3d above). `reserved: false` on that item is the tie-breaker
- * showing the attempt genuinely never landed (back to `available`, retry now safe);
- * `reserved: true` confirms it landed (stays `reserved-by-you`, the uncertain notice is cleared).
- * Every other item is untouched by this — the ordinary race above needs no reconciliation, only
- * this ambiguous one does.
+ * reserve attempt timed out on (3d above). Only `reserved: true` on that exact item is ever
+ * treated as meaningful — a *positive* confirmation that the attempt landed (stays
+ * `reserved-by-you`, the uncertain notice is cleared). `reserved: false` is deliberately **not**
+ * treated as its opposite: `items` is the *whole* list's view, so its identity changes on every
+ * push for the share token, including one about a completely different item — reading "still
+ * false" as "never landed" would resolve the ambiguity on the strength of news that was never
+ * about this item at all (Batch 45 review, B1). If the attempt genuinely never landed, no push
+ * about *this* item will ever say so, and this hook leaves it optimistic until the list expires —
+ * exactly what GL-41 prescribes, not a bug.
  */
 import { useCallback, useState } from "react";
 
@@ -123,8 +133,9 @@ export function useReserveGift(
   );
   // Items awaiting a `reply-timeout` verdict (3d in this file's own header) — a subset of
   // `optimisticIds`, tracked separately because it changes what a *following* `already-reserved`
-  // means for that item (see the catch block below) and what the render-time reconciliation further
-  // down watches for.
+  // means for that item: the catch block below treats one for an item in this set as confirmation
+  // ("it landed"), not conflict ("someone else took it") — and it's also what the render-time
+  // reconciliation further down watches `items` for.
   const [timedOutIds, setTimedOutIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -139,9 +150,10 @@ export function useReserveGift(
       // mid-flight, already ours, or already lost is a no-op rather than a second RPC. An item
       // awaiting a reply-timeout verdict is still in `optimisticIds` (3d), so this same check is
       // also what makes GL-41's honesty rule hold: nothing in this hook can ever send a *second*
-      // `ReserveGift` for that item — and so misrender the guest's own reservation as someone
-      // else's — until the render-time reconciliation below has resolved the ambiguity one way or the
-      // other and removed it from `optimisticIds` again.
+      // `ReserveGift` for that item — and so risk misrendering the guest's own reservation as
+      // someone else's — unless and until a *positive* confirmation (this file's own header) lifts
+      // it back out of `optimisticIds`, which per GL-41 may never happen before the list itself
+      // expires.
       if (optimisticIds.has(itemId) || hasReleaseSecret(shareToken, itemId)) {
         return;
       }
@@ -171,6 +183,17 @@ export function useReserveGift(
           return;
         }
 
+        if (info.kind === "already-reserved" && timedOutIds.has(itemId)) {
+          // Belt and braces (Batch 45 review, B1/S3): the double-submit guard above already makes
+          // a *second* `ReserveGift` for a timed-out item unreachable in practice, but if it were
+          // ever reached anyway, `already_reserved` here is confirmation that this browser's own
+          // earlier attempt landed — GL-41's honesty rule — not evidence that someone else took
+          // it. Stays optimistic; only the now-resolved notice is cleared.
+          setTimedOutIds((prev) => withoutId(prev, itemId));
+          setErrors((prev) => withoutError(prev, itemId));
+          return;
+        }
+
         setOptimisticIds((prev) => withoutId(prev, itemId));
 
         if (info.kind === "already-reserved") {
@@ -180,14 +203,21 @@ export function useReserveGift(
         }
       }
     },
-    [shareToken, optimisticIds],
+    [shareToken, optimisticIds, timedOutIds],
   );
 
-  // "Until a push decides" (this file's own header, 3d): the next time the live server view of a
-  // timed-out item arrives — a push, or simply `items` catching up once the list is `ready` —
-  // that view is the tie-breaker. `reserved: false` means the attempt genuinely never landed, so
-  // the item goes back to being reservable; `reserved: true` confirms it (optimistically, this
-  // browser's own attempt) and only the uncertain notice needs clearing.
+  // "Until a push decides" (this file's own header, 3d): the next time a timed-out item's own
+  // entry in the live server view says `reserved: true`, that is a *positive* confirmation the
+  // attempt landed, and the uncertain notice can be cleared. There is deliberately no symmetric
+  // "`reserved: false` means it failed" arm (Batch 45 review, B1) — `items` is the whole list's
+  // view, so its identity changes on *every* push for this share token, including one about a
+  // completely different item, while this exact item's own field is still (truthfully) `false`
+  // because the projection hasn't caught up with *its* possibly-committed reservation yet. Reading
+  // that as "never landed" would resolve the ambiguity on news that was never about this item,
+  // re-arm the double-submit guard, and reopen exactly the retry-into-`already_reserved` hazard
+  // 3d exists to prevent. If the attempt genuinely never landed, no push will ever say `true` for
+  // it, and this hook leaves it optimistic until the list itself expires — GL-41's own decision
+  // that expiry is the only escape hatch, not an oversight here.
   //
   // Adjusted synchronously during render, not inside a `useEffect` — this is React's own
   // "adjusting state when a prop changes" pattern (there is no external system to synchronize
@@ -203,15 +233,14 @@ export function useReserveGift(
     setReconciledItems(items);
 
     for (const item of items) {
-      if (!timedOutIds.has(item.itemId)) {
+      if (!timedOutIds.has(item.itemId) || !item.reserved) {
         continue;
       }
 
+      // Confirmed: leave `optimisticIds` exactly as it is (still "reserved-by-you") and clear
+      // only the now-resolved ambiguity.
       setTimedOutIds((prev) => withoutId(prev, item.itemId));
       setErrors((prev) => withoutError(prev, item.itemId));
-      if (!item.reserved) {
-        setOptimisticIds((prev) => withoutId(prev, item.itemId));
-      }
     }
   }
 

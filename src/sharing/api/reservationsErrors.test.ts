@@ -134,9 +134,11 @@ describe("describeReserveGiftError", () => {
     // Act
     const result = describeReserveGiftError(error);
 
-    // Assert
+    // Assert — states both outcomes honestly (Batch 45 review): neither promises a resolution
+    // that may never arrive, nor omits the "stuck unavailable until expiry" half that matters.
     expect(result.kind).toBe("reply-timeout");
-    expect(result.message).toMatch(/may have gone through/i);
+    expect(result.message).toMatch(/went through/i);
+    expect(result.message).toMatch(/unavailable until the list expires/i);
   });
 
   it("DescribeReserveGiftError_ShouldReturnUnavailable_WhenStatusIsUnavailableWithNoTrailer", () => {

@@ -28,8 +28,12 @@
  * `reservation.already_reserved`, and — with nothing to distinguish it from an ordinary
  * lost-the-race — `useReserveGift` would render the guest's own earlier reservation as "someone
  * just took this one". The `reply-timeout` kind exists so `useReserveGift` can special-case it
- * instead: keep the optimistic "reserved-by-you" state (no button, no retry) until a live push
- * settles the question one way or the other.
+ * instead: keep the optimistic "reserved-by-you" state (no button, no retry) permanently, unless
+ * and until a live push *positively confirms* the attempt landed (Batch 45 review, B1 — there is
+ * no symmetric "it didn't land" signal this hook can ever trust, so there is no rollback path at
+ * all here, only confirmation or silence). The message below says so plainly, for both of the
+ * outcomes that "no answer" could actually mean, rather than promising a resolution ("we'll update
+ * this once we know for sure") that may never arrive if the attempt genuinely never landed.
  */
 import { Code, ConnectError } from "@connectrpc/connect";
 
@@ -101,8 +105,10 @@ const KNOWN_ERROR_CODES: Readonly<Record<string, ReserveGiftErrorInfo>> = {
   [REPLY_TIMEOUT_CODE]: {
     kind: "reply-timeout",
     message:
-      "This is taking longer than expected. Your reservation may have gone through " +
-      "— we'll update this automatically once we know for sure.",
+      "This is taking longer than expected. If it went through, this gift is already " +
+      "reserved under this browser — nothing more to do. If it didn't, this gift can't be " +
+      "retried and stays unavailable until the list expires. We can't tell you which one " +
+      "happened.",
   },
 };
 
