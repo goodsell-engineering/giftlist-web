@@ -29,6 +29,7 @@ const confirmDeletedMock = vi.fn();
 const renameGiftListMock = vi.fn();
 const addGiftItemMock = vi.fn();
 const removeGiftItemMock = vi.fn();
+const changeGiftItemDescriptionMock = vi.fn();
 const deleteGiftListMock = vi.fn();
 
 const SESSION: AuthContextValue["session"] = {
@@ -90,12 +91,14 @@ describe("ListDetailOwnerPage", () => {
     renameGiftListMock.mockReset();
     addGiftItemMock.mockReset();
     removeGiftItemMock.mockReset();
+    changeGiftItemDescriptionMock.mockReset();
     deleteGiftListMock.mockReset();
     createGiftListsClientMock.mockReset();
     createGiftListsClientMock.mockReturnValue({
       renameGiftList: renameGiftListMock,
       addGiftItem: addGiftItemMock,
       removeGiftItem: removeGiftItemMock,
+      changeGiftItemDescription: changeGiftItemDescriptionMock,
       deleteGiftList: deleteGiftListMock,
     } as unknown as ReturnType<typeof createGiftListsClient>);
   });
@@ -548,6 +551,340 @@ describe("ListDetailOwnerPage", () => {
       ),
     ).toBe(false);
     expect(predicate(aGiftList({ items: [] }))).toBe(true);
+  });
+
+  it("ListDetailOwnerPage_ShouldSendTheTrimmedDescriptionAndConfirmIt_WhenAnEditIsSaved", async () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Old description",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    changeGiftItemDescriptionMock.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.click(
+      screen.getByRole("button", { name: "Edit description" }),
+    );
+    const textbox = screen.getByLabelText("Description");
+    await user.clear(textbox);
+    await user.type(textbox, "  New description  ");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Assert
+    await waitFor(() =>
+      expect(changeGiftItemDescriptionMock).toHaveBeenCalledWith({
+        listId: "list-1",
+        itemId: "item-1",
+        description: "New description",
+      }),
+    );
+    await waitFor(() => expect(confirmChangeMock).toHaveBeenCalled());
+    const predicate = confirmChangeMock.mock.calls[0][0] as (
+      list: GiftListProjection,
+    ) => boolean;
+    expect(
+      predicate(
+        aGiftList({
+          items: [
+            {
+              itemId: "item-1",
+              name: "Headphones",
+              description: "New description",
+              url: null,
+            },
+          ],
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      predicate(
+        aGiftList({
+          items: [
+            {
+              itemId: "item-1",
+              name: "Headphones",
+              description: "Old description",
+              url: null,
+            },
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("ListDetailOwnerPage_ShouldSendNoDescriptionAndConfirmNull_WhenTheFieldIsEmptiedAndSaved", async () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Old description",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    changeGiftItemDescriptionMock.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act — whitespace-only counts as emptied, same as the trimmed-blank rule on AddGiftItem.
+    await user.click(
+      screen.getByRole("button", { name: "Edit description" }),
+    );
+    const textbox = screen.getByLabelText("Description");
+    await user.clear(textbox);
+    await user.type(textbox, "   ");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Assert
+    await waitFor(() =>
+      expect(changeGiftItemDescriptionMock).toHaveBeenCalledWith({
+        listId: "list-1",
+        itemId: "item-1",
+        description: undefined,
+      }),
+    );
+    await waitFor(() => expect(confirmChangeMock).toHaveBeenCalled());
+    const predicate = confirmChangeMock.mock.calls[0][0] as (
+      list: GiftListProjection,
+    ) => boolean;
+    expect(
+      predicate(
+        aGiftList({
+          items: [
+            {
+              itemId: "item-1",
+              name: "Headphones",
+              description: null,
+              url: null,
+            },
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("ListDetailOwnerPage_ShouldPrefillTheCurrentDescription_WhenEditDescriptionIsOpened", async () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Noise-cancelling",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.click(
+      screen.getByRole("button", { name: "Edit description" }),
+    );
+
+    // Assert
+    expect(screen.getByLabelText("Description")).toHaveValue(
+      "Noise-cancelling",
+    );
+  });
+
+  it("ListDetailOwnerPage_ShouldOfferAddDescription_WhenTheItemHasNone", () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        { itemId: "item-1", name: "Headphones", description: null, url: null },
+      ],
+    });
+    setState({ status: "ready", giftList });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    expect(
+      screen.getByRole("button", { name: "Add description" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Edit description" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ListDetailOwnerPage_ShouldCapTheDescriptionAt2000AndShowTheCounter_When2001CharactersArePasted", async () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        { itemId: "item-1", name: "Headphones", description: null, url: null },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    const user = userEvent.setup();
+    renderListDetailPage();
+    await user.click(screen.getByRole("button", { name: "Add description" }));
+    const textbox = screen.getByLabelText("Description");
+    const tooLong = "a".repeat(2001);
+
+    // Act
+    await user.click(textbox);
+    await user.paste(tooLong);
+
+    // Assert
+    expect(textbox).toHaveValue("a".repeat(2000));
+    expect(screen.getByText("2000 / 2000")).toBeInTheDocument();
+  });
+
+  it("ListDetailOwnerPage_ShouldRenderNoEditDescriptionControl_WhenTheListHasExpired", () => {
+    // Arrange
+    const giftList = aGiftList({
+      expiresAt: new Date(Date.now() - 86_400_000).toISOString(),
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Noise-cancelling",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    expect(
+      screen.queryByRole("button", { name: "Edit description" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Add description" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ListDetailOwnerPage_ShouldShowTheNotConfirmedNoticeAndReenableSave_WhenTheDescriptionChangeCannotBeConfirmed", async () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Old description",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    changeGiftItemDescriptionMock.mockResolvedValue({});
+    confirmChangeMock.mockResolvedValue(false);
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.click(
+      screen.getByRole("button", { name: "Edit description" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Assert — reuses the shared notice (D3), not a page-local string.
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /hasn't shown up yet/i,
+    );
+    expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+  });
+
+  it("ListDetailOwnerPage_ShouldShowAnInlineError_WhenTheChangeDescriptionRpcFails", async () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Old description",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    changeGiftItemDescriptionMock.mockRejectedValue(new Error("boom"));
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.click(
+      screen.getByRole("button", { name: "Edit description" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Assert
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(confirmChangeMock).not.toHaveBeenCalled();
+  });
+
+  it("ListDetailOwnerPage_ShouldCloseWithoutCallingTheRpc_WhenCancelIsClicked", async () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Old description",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.click(
+      screen.getByRole("button", { name: "Edit description" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    // Assert
+    expect(screen.queryByLabelText("Description")).not.toBeInTheDocument();
+    expect(changeGiftItemDescriptionMock).not.toHaveBeenCalled();
+  });
+
+  it("ListDetailOwnerPage_ShouldKeepLineBreaksAndWrapLongWordsInTheDescription_WhenItHasNewlines", () => {
+    // Arrange — D4: the subtitle keeps line breaks and wraps long unbroken words instead of
+    // collapsing whitespace or overflowing the card.
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Line one\nLine two",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    const description = screen.getByText((_, element) =>
+      element?.textContent === "Line one\nLine two",
+    );
+    expect(description).toHaveStyle({
+      whiteSpace: "pre-line",
+      overflowWrap: "anywhere",
+    });
   });
 
   it("ListDetailOwnerPage_ShouldDeleteTheListAndNavigateToDashboard_WhenDeletionIsConfirmed", async () => {
