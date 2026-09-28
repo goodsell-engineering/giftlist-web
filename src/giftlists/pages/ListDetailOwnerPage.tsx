@@ -490,7 +490,12 @@ export default function ListDetailOwnerPage() {
               ?.description === expected,
         );
         if (confirmed) {
-          setEditingItemId(null);
+          // Not a bare setEditingItemId(null): the owner may have already closed this row and
+          // opened a different one while this save's confirmChange wait was still in flight
+          // (editingItemId/descriptionValue are shared page state, one save at a time). Only
+          // clear it if it's still this row that's open, so a settling save never closes — and
+          // discards the in-progress text of — whichever other row the owner has since opened.
+          setEditingItemId((prev) => (prev === itemId ? null : prev));
         } else {
           setChangeConfirmationWarning(CHANGE_NOT_YET_VISIBLE_MESSAGE);
         }
@@ -850,6 +855,11 @@ export default function ListDetailOwnerPage() {
                         onClick={() =>
                           startEditDescription(item.itemId, item.description)
                         }
+                        // A save in flight owns editingItemId/descriptionValue for whichever row
+                        // is currently open — opening (or reopening) any row while that save is
+                        // still settling would stomp its text, so every row's button is disabled
+                        // for the duration, not just the open row's.
+                        disabled={isSavingDescription}
                       >
                         {item.description
                           ? "Edit description"

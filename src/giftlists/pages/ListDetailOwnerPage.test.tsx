@@ -859,6 +859,61 @@ describe("ListDetailOwnerPage", () => {
     expect(changeGiftItemDescriptionMock).not.toHaveBeenCalled();
   });
 
+  it("ListDetailOwnerPage_ShouldDisableEveryEditDescriptionButton_WhileASaveIsStillConfirming", async () => {
+    // Arrange — S1 review fix: editingItemId/descriptionValue are shared page state, one save at
+    // a time. If another row's button stayed enabled while item 1's save was still waiting on
+    // confirmChange, clicking it would call startEditDescription and stomp that state — closing
+    // item 1's form (or resetting its text) out from under the in-flight save. Every row's
+    // button must be disabled for the whole confirmChange wait, not just the RPC.
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Old description",
+          url: null,
+        },
+        {
+          itemId: "item-2",
+          name: "Mug",
+          description: null,
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    changeGiftItemDescriptionMock.mockResolvedValue({});
+    let resolveConfirm: (value: boolean) => void = () => {};
+    confirmChangeMock.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        resolveConfirm = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act — start saving item 1's description; confirmChange is still pending.
+    await user.click(
+      screen.getByRole("button", { name: "Edit description" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Assert — both this row's button (now "Edit description" behind the open form) and item
+    // 2's ("Add description", never opened) are disabled while the save is still confirming.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add description" }),
+      ).toBeDisabled(),
+    );
+    expect(
+      screen.getAllByRole("button", { name: "Edit description" })[0],
+    ).toBeDisabled();
+
+    // Cleanup — let the pending confirmChange settle so it doesn't leak into later tests.
+    resolveConfirm(true);
+    await waitFor(() => expect(confirmChangeMock).toHaveBeenCalled());
+  });
+
   it("ListDetailOwnerPage_ShouldKeepLineBreaksAndWrapLongWordsInTheDescription_WhenItHasNewlines", () => {
     // Arrange — D4: the subtitle keeps line breaks and wraps long unbroken words instead of
     // collapsing whitespace or overflowing the card.
