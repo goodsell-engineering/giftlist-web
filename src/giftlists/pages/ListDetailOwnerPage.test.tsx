@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "../../test/render";
+import { fireEvent, render, screen, waitFor } from "../../test/render";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -645,6 +645,115 @@ describe("ListDetailOwnerPage", () => {
     const textbox = screen.getByLabelText("Description");
     await user.clear(textbox);
     await user.type(textbox, "   ");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Assert
+    await waitFor(() =>
+      expect(changeGiftItemDescriptionMock).toHaveBeenCalledWith({
+        listId: "list-1",
+        itemId: "item-1",
+        description: undefined,
+      }),
+    );
+    await waitFor(() => expect(confirmChangeMock).toHaveBeenCalled());
+    const predicate = confirmChangeMock.mock.calls[0][0] as (
+      list: GiftListProjection,
+    ) => boolean;
+    expect(
+      predicate(
+        aGiftList({
+          items: [
+            {
+              itemId: "item-1",
+              name: "Headphones",
+              description: null,
+              url: null,
+            },
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("ListDetailOwnerPage_ShouldSendAndConfirmTheServerTrimmedDescription_WhenItEndsInANextLineCharacter", async () => {
+    // Arrange — U+0085 (NEL) is whitespace to .NET's string.Trim() but not to JS's String.trim(),
+    // so the web must normalise the same way GiftLists does rather than trusting JS trim().
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Old description",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    changeGiftItemDescriptionMock.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.click(
+      screen.getByRole("button", { name: "Edit description" }),
+    );
+    const textbox = screen.getByLabelText("Description");
+    fireEvent.change(textbox, { target: { value: "New\u0085" } });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Assert
+    await waitFor(() =>
+      expect(changeGiftItemDescriptionMock).toHaveBeenCalledWith({
+        listId: "list-1",
+        itemId: "item-1",
+        description: "New",
+      }),
+    );
+    await waitFor(() => expect(confirmChangeMock).toHaveBeenCalled());
+    const predicate = confirmChangeMock.mock.calls[0][0] as (
+      list: GiftListProjection,
+    ) => boolean;
+    expect(
+      predicate(
+        aGiftList({
+          items: [
+            {
+              itemId: "item-1",
+              name: "Headphones",
+              description: "New",
+              url: null,
+            },
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("ListDetailOwnerPage_ShouldSendNoDescriptionAndConfirmNull_WhenTheFieldHoldsOnlyANextLineCharacter", async () => {
+    // Arrange — same U+0085 gap as above, but for the fully-emptied case: GiftLists treats a
+    // description of just U+0085 as IsNullOrWhiteSpace and stores null, so the web must send no
+    // description and wait for null, not for "\u0085" to still be present.
+    const giftList = aGiftList({
+      items: [
+        {
+          itemId: "item-1",
+          name: "Headphones",
+          description: "Old description",
+          url: null,
+        },
+      ],
+    });
+    setState({ status: "ready", giftList });
+    changeGiftItemDescriptionMock.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.click(
+      screen.getByRole("button", { name: "Edit description" }),
+    );
+    const textbox = screen.getByLabelText("Description");
+    fireEvent.change(textbox, { target: { value: "\u0085" } });
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     // Assert
