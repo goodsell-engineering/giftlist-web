@@ -3,8 +3,8 @@
  *
  * The owner's view of a single list — rename, add/remove items, delete the list, the copy-only
  * share link — backed by the real `giftList(id)` GraphQL query (GL-23) for reads and the real
- * grpc-web RenameGiftList/DeleteGiftList/AddGiftItem/RemoveGiftItem commands (GL-71) for writes
- * (GL-24).
+ * grpc-web RenameGiftList/DeleteGiftList/AddGiftItem/RemoveGiftItem/ChangeGiftItemDescription
+ * commands (GL-71, plus ChangeGiftItemDescription from GL-137) for writes (GL-24).
  *
  * Every write below follows useGiftList's own rule for "the write may not be visible yet" (see
  * that file's header) rather than inventing a page-local answer: `confirmChange`/`confirmDeleted`
@@ -16,12 +16,13 @@
  * - Reservation state, in any form. Privacy rule (ARCHITECTURE.md "Reservation privacy"): the owner's List Detail
  *   view never queries or renders it. There is no toggle, no "advanced" mode, no debug flag — do
  *   not add one later.
- * - An "edit expiry" control the mockup shows: giftlists.proto has exactly five commands
- *   (CreateGiftList/RenameGiftList/DeleteGiftList/AddGiftItem/RemoveGiftItem) and none of them
- *   changes an existing list's expiry. Building that control would mean inventing a command that
- *   doesn't exist on the wire, so it's left out rather than wired to nothing — the detail card
- *   below therefore only gets a "Rename" button, not the "Rename"/"Edit expiry" pair the mockup
- *   draws (GL-123, this restyle: rendering only, not a licence to invent a sixth command).
+ * - An "edit expiry" control the mockup shows: giftlists.proto has exactly six commands
+ *   (CreateGiftList/RenameGiftList/DeleteGiftList/AddGiftItem/RemoveGiftItem/
+ *   ChangeGiftItemDescription, the last one from GL-137) and none of them changes an existing
+ *   list's expiry. Building that control would mean inventing a command that doesn't exist on
+ *   the wire, so it's left out rather than wired to nothing — the detail card below therefore
+ *   only gets a "Rename" button, not the "Rename"/"Edit expiry" pair the mockup draws (GL-123,
+ *   this restyle: rendering only, not a licence to invent a command).
  *
  * Restyled onto Mantine (GL-123) — labels, error copy, the confirm-then-settle behaviour and the
  * privacy guarantees above are all unchanged from before this story; only the markup changed.
@@ -52,6 +53,7 @@ import {
   Paper,
   Stack,
   Text,
+  Textarea,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -75,6 +77,15 @@ function shareLinkFor(shareToken: string): string {
  * reaching the grpc-web call at all.
  */
 const GIFT_ITEM_URL_MAX_LENGTH = 2048;
+
+/**
+ * `GiftItemDescription`'s own bound (`giftlists/src/GiftLists.Domain/GiftLists/
+ * GiftItemDescription.cs`, `MaxLength`, GL-137) — enforced here too so a pasted value stops at
+ * the domain's own limit rather than reaching the grpc-web call only to be silently dropped by
+ * GiftLists' fire-and-forget handler (the same "check client-side, don't let it vanish" reasoning
+ * as `GIFT_ITEM_URL_MAX_LENGTH` above and `isAcceptableGiftItemUrl`'s own comment).
+ */
+const GIFT_ITEM_DESCRIPTION_MAX_LENGTH = 2000;
 
 /**
  * GL-78, review round 3 — this is deliberately NOT an attempt to mirror
@@ -200,6 +211,10 @@ interface LocationState {
 const CHANGE_NOT_YET_VISIBLE_MESSAGE =
   "That change hasn't shown up yet. It may still be processing — try refreshing in a moment.";
 
+// GiftLists normalises with .NET string.Trim() (char.IsWhiteSpace), which also strips U+0085;
+// JS trim() does not. \s is exactly trim()'s set, so this only adds U+0085.
+const trimLikeGiftLists = (value: string) => value.replace(/^[\s\u0085]+|[\s\u0085]+$/g, "");
+
 type ListDetailStatus = "active" | "expiring-soon" | "expired";
 
 const LIST_DETAIL_EXPIRY_WARNING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -297,6 +312,7 @@ export default function ListDetailOwnerPage() {
   const itemNameId = useId();
   const itemUrlId = useId();
   const itemUrlErrorId = useId();
+  const itemDescriptionId = useId();
 
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -311,6 +327,15 @@ export default function ListDetailOwnerPage() {
 
   const [removingItemId, setRemovingItemId] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+
+  // Only one item's description is ever edited at a time (plan's own constraint) — one shared
+  // set of fields, like the rename form above, rather than per-item state for every row.
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [descriptionValue, setDescriptionValue] = useState("");
+  const [descriptionError, setDescriptionError] = useState<string | null>(
+    null,
+  );
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -434,6 +459,57 @@ export default function ListDetailOwnerPage() {
       }
     },
     [giftListsClient, confirmChange],
+  );
+
+  const startEditDescription = useCallback(
+    (itemId: string, currentDescription: string | null) => {
+      setEditingItemId(itemId);
+      setDescriptionValue(currentDescription ?? "");
+      setDescriptionError(null);
+    },
+    [],
+  );
+
+  const handleChangeDescription = useCallback(
+    async (event: FormEvent<HTMLFormElement>, id: string, itemId: string) => {
+      event.preventDefault();
+      setDescriptionError(null);
+      setChangeConfirmationWarning(null);
+      setIsSavingDescription(true);
+      try {
+        const trimmed = trimLikeGiftLists(descriptionValue);
+        const expected = trimmed === "" ? null : trimmed;
+        await giftListsClient.changeGiftItemDescription({
+          listId: id,
+          itemId,
+          description: trimmed === "" ? undefined : trimmed,
+        });
+        // Unlike rename/add/remove above, the form stays open (Save reading "Saving…", both
+        // buttons disabled) across the whole confirmChange wait, not just the RPC — the plan's
+        // own rule for this control — so it can go straight back to an editable state if
+        // confirmation fails, rather than reopening a closed form.
+        const confirmed = await confirmChange(
+          (list) =>
+            list.items.find((item) => item.itemId === itemId)
+              ?.description === expected,
+        );
+        if (confirmed) {
+          // Not a bare setEditingItemId(null): the owner may have already closed this row and
+          // opened a different one while this save's confirmChange wait was still in flight
+          // (editingItemId/descriptionValue are shared page state, one save at a time). Only
+          // clear it if it's still this row that's open, so a settling save never closes — and
+          // discards the in-progress text of — whichever other row the owner has since opened.
+          setEditingItemId((prev) => (prev === itemId ? null : prev));
+        } else {
+          setChangeConfirmationWarning(CHANGE_NOT_YET_VISIBLE_MESSAGE);
+        }
+      } catch (reason) {
+        setDescriptionError(describeGiftListsCommandError(reason).message);
+      } finally {
+        setIsSavingDescription(false);
+      }
+    },
+    [giftListsClient, descriptionValue, confirmChange],
   );
 
   const handleDelete = useCallback(
@@ -717,64 +793,163 @@ export default function ListDetailOwnerPage() {
           component="ul"
           style={{ listStyle: "none", margin: 0, padding: 0 }}
         >
-          {giftList.items.map((item) => (
-            <Box
-              component="li"
-              key={item.itemId}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                padding: "14px 0",
-                borderBottom: "1px solid var(--gl-border)",
-              }}
-            >
-              <Center
-                w={44}
-                h={44}
+          {giftList.items.map((item) => {
+            const isEditingDescription = editingItemId === item.itemId;
+            return (
+              <Box
+                component="li"
+                key={item.itemId}
                 style={{
-                  borderRadius: 10,
-                  background: "var(--mantine-color-accent-0)",
-                  fontSize: "1.2rem",
-                  flexShrink: 0,
+                  padding: "14px 0",
+                  borderBottom: "1px solid var(--gl-border)",
                 }}
               >
-                {itemThumbLabel(item.name)}
-              </Center>
-              <Box style={{ flex: 1, minWidth: 0 }}>
-                <Text fw={600} size="sm">
-                  {item.name}
-                </Text>
-                {item.description && (
-                  <Text size="xs" c="var(--gl-text-muted)" mt={2}>
-                    {item.description}
-                  </Text>
-                )}
-                {item.url && (
-                  <Anchor
-                    href={item.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    size="xs"
+                <Box
+                  style={{ display: "flex", alignItems: "center", gap: 14 }}
+                >
+                  <Center
+                    w={44}
+                    h={44}
+                    style={{
+                      borderRadius: 10,
+                      background: "var(--mantine-color-accent-0)",
+                      fontSize: "1.2rem",
+                      flexShrink: 0,
+                    }}
                   >
-                    {item.url}
-                  </Anchor>
+                    {itemThumbLabel(item.name)}
+                  </Center>
+                  <Box style={{ flex: 1, minWidth: 0 }}>
+                    <Text fw={600} size="sm">
+                      {item.name}
+                    </Text>
+                    {item.description && (
+                      <Text
+                        size="xs"
+                        c="var(--gl-text-muted)"
+                        mt={2}
+                        // GL-137 (D4): keep the owner's line breaks and wrap long unbroken words.
+                        style={{
+                          whiteSpace: "pre-line",
+                          overflowWrap: "anywhere",
+                        }}
+                      >
+                        {item.description}
+                      </Text>
+                    )}
+                    {item.url && (
+                      <Anchor
+                        href={item.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        size="xs"
+                      >
+                        {item.url}
+                      </Anchor>
+                    )}
+                  </Box>
+                  <Group gap={8} wrap="nowrap" style={{ flexShrink: 0 }}>
+                    {/* Hidden on an expired list — matches the rest of this page's write surface:
+                        nothing on an expired list is editable, per the plan's own rule. */}
+                    {status !== "expired" && (
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="xs"
+                        onClick={() =>
+                          startEditDescription(item.itemId, item.description)
+                        }
+                        // A save in flight owns editingItemId/descriptionValue for whichever row
+                        // is currently open — opening (or reopening) any row while that save is
+                        // still settling would stomp its text, so every row's button is disabled
+                        // for the duration, not just the open row's.
+                        disabled={isSavingDescription}
+                      >
+                        {item.description
+                          ? "Edit description"
+                          : "Add description"}
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      color="danger"
+                      size="xs"
+                      onClick={() =>
+                        void handleRemoveItem(giftList.listId, item.itemId)
+                      }
+                      disabled={removingItemId === item.itemId}
+                    >
+                      {removingItemId === item.itemId
+                        ? "Removing…"
+                        : "Remove"}
+                    </Button>
+                  </Group>
+                </Box>
+
+                {isEditingDescription && (
+                  <Collapse expanded mt="sm">
+                    <Box
+                      component="form"
+                      onSubmit={(event) =>
+                        void handleChangeDescription(
+                          event,
+                          giftList.listId,
+                          item.itemId,
+                        )
+                      }
+                      noValidate
+                    >
+                      <Stack gap="sm">
+                        <Textarea
+                          id={itemDescriptionId}
+                          label="Description"
+                          minRows={2}
+                          maxLength={GIFT_ITEM_DESCRIPTION_MAX_LENGTH}
+                          value={descriptionValue}
+                          onChange={(event) =>
+                            setDescriptionValue(
+                              event.target.value.slice(
+                                0,
+                                GIFT_ITEM_DESCRIPTION_MAX_LENGTH,
+                              ),
+                            )
+                          }
+                        />
+                        <Text size="xs" c="var(--gl-text-muted)">
+                          {descriptionValue.length} /{" "}
+                          {GIFT_ITEM_DESCRIPTION_MAX_LENGTH}
+                        </Text>
+                        {descriptionError && (
+                          <Text role="alert" size="sm" c="danger">
+                            {descriptionError}
+                          </Text>
+                        )}
+                        <Group gap={8}>
+                          <Button
+                            type="submit"
+                            size="sm"
+                            disabled={isSavingDescription}
+                          >
+                            {isSavingDescription ? "Saving…" : "Save"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => setEditingItemId(null)}
+                            disabled={isSavingDescription}
+                          >
+                            Cancel
+                          </Button>
+                        </Group>
+                      </Stack>
+                    </Box>
+                  </Collapse>
                 )}
               </Box>
-              <Button
-                type="button"
-                variant="outline"
-                color="danger"
-                size="xs"
-                onClick={() =>
-                  void handleRemoveItem(giftList.listId, item.itemId)
-                }
-                disabled={removingItemId === item.itemId}
-              >
-                {removingItemId === item.itemId ? "Removing…" : "Remove"}
-              </Button>
-            </Box>
-          ))}
+            );
+          })}
         </Box>
         {removeError && (
           <Text role="alert" size="sm" c="danger" mt="sm">
