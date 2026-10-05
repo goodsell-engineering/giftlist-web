@@ -266,7 +266,13 @@ function SharedGiftItemRow({
             {item.name}
           </Text>
           {item.description && (
-            <Text size="sm" c="dimmed">
+            <Text
+              size="sm"
+              c="dimmed"
+              // GL-137 (D4): keep the owner's line breaks and wrap long unbroken words, rather
+              // than either collapsing whitespace or overflowing the card.
+              style={{ whiteSpace: "pre-line", overflowWrap: "anywhere" }}
+            >
               {item.description}
             </Text>
           )}

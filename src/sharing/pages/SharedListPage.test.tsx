@@ -148,6 +148,78 @@ describe("SharedListPage", () => {
     ).toHaveAttribute("href", "https://example.com/headphones");
   });
 
+  it("SharedListPage_ShouldOfferNoWayToEditADescription_WhenItemsHaveDescriptions", () => {
+    // Arrange — TC-T2-06: the guest view gets no edit control at all (GL-137, the owner-only
+    // edit flow lives on ListDetailOwnerPage instead).
+    setState({
+      status: "ready",
+      giftList: {
+        listId: "list-1",
+        name: "Ada's Birthday Wishlist",
+        expiresAt: new Date(Date.now() + 42 * 86_400_000).toISOString(),
+        items: [
+          {
+            itemId: "item-1",
+            name: "Wireless Headphones",
+            description: "Noise-cancelling, any colour",
+            url: null,
+            reserved: false,
+          },
+        ],
+      },
+    });
+    setReserveGift();
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    expect(
+      screen.queryByRole("button", { name: /description/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: /description/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /description/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("SharedListPage_ShouldKeepLineBreaksAndWrapLongWordsInTheDescription_WhenItHasNewlines", () => {
+    // Arrange — D4: the subtitle keeps line breaks and wraps long unbroken words instead of
+    // collapsing whitespace or overflowing the card.
+    setState({
+      status: "ready",
+      giftList: {
+        listId: "list-1",
+        name: "Ada's Birthday Wishlist",
+        expiresAt: new Date(Date.now() + 42 * 86_400_000).toISOString(),
+        items: [
+          {
+            itemId: "item-1",
+            name: "Wireless Headphones",
+            description: "Line one\nLine two",
+            url: null,
+            reserved: false,
+          },
+        ],
+      },
+    });
+    setReserveGift();
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    const description = screen.getByText(
+      (_, element) => element?.textContent === "Line one\nLine two",
+    );
+    expect(description).toHaveStyle({
+      whiteSpace: "pre-line",
+      overflowWrap: "anywhere",
+    });
+  });
+
   it("SharedListPage_ShouldShowTheReserveButtonAndCallReserveWithTheItemId_WhenTheItemIsAvailable", async () => {
     // Arrange
     setState({
