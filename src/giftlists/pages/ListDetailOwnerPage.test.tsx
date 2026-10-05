@@ -1108,4 +1108,161 @@ describe("ListDetailOwnerPage", () => {
     expect(confirmDeletedMock).not.toHaveBeenCalled();
     expect(screen.queryByText("Dashboard page")).not.toBeInTheDocument();
   });
+
+  it("ListDetailOwnerPage_ShouldSendTheTrimmedDescriptionAndClearTheField_WhenAnItemIsAddedWithADescription", async () => {
+    // Arrange
+    setState({ status: "ready", giftList: aGiftList() });
+    addGiftItemMock.mockResolvedValue({ itemId: "new-item" });
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.type(screen.getByLabelText("Item name"), "Hoodie");
+    await user.type(
+      screen.getByLabelText("Description (optional)"),
+      "  Size M, navy  ",
+    );
+    await user.click(screen.getByRole("button", { name: "Add item" }));
+
+    // Assert
+    await waitFor(() =>
+      expect(addGiftItemMock).toHaveBeenCalledWith({
+        listId: "list-1",
+        name: "Hoodie",
+        url: undefined,
+        description: "Size M, navy",
+      }),
+    );
+    await waitFor(() => expect(confirmChangeMock).toHaveBeenCalled());
+    const predicate = confirmChangeMock.mock.calls[0][0] as (
+      list: GiftListProjection,
+    ) => boolean;
+    expect(
+      predicate(
+        aGiftList({
+          items: [
+            { itemId: "new-item", name: "x", description: null, url: null },
+          ],
+        }),
+      ),
+    ).toBe(true);
+    expect(screen.getByLabelText("Description (optional)")).toHaveValue("");
+  });
+
+  it("ListDetailOwnerPage_ShouldShowHowManyDescriptionCharactersAreUsed_WhenTheOwnerTypes", async () => {
+    // Arrange
+    setState({ status: "ready", giftList: aGiftList() });
+    const user = userEvent.setup();
+    renderListDetailPage();
+    expect(screen.getByText("0 / 2000")).toBeInTheDocument();
+
+    // Act
+    await user.type(screen.getByLabelText("Description (optional)"), "hello");
+
+    // Assert
+    expect(screen.getByText("5 / 2000")).toBeInTheDocument();
+  });
+
+  it("ListDetailOwnerPage_ShouldCapTheAddItemDescriptionAt2000AndShowTheCounter_When2001CharactersArePasted", async () => {
+    // Arrange
+    setState({ status: "ready", giftList: aGiftList() });
+    const user = userEvent.setup();
+    renderListDetailPage();
+    const textbox = screen.getByLabelText("Description (optional)");
+
+    // Act
+    await user.click(textbox);
+    await user.paste("a".repeat(2001));
+
+    // Assert
+    expect(textbox).toHaveValue("a".repeat(2000));
+    expect(screen.getByText("2000 / 2000")).toBeInTheDocument();
+  });
+
+  it("ListDetailOwnerPage_ShouldSendNoDescription_WhenTheAddItemDescriptionIsOnlySpaces", async () => {
+    // Arrange
+    setState({ status: "ready", giftList: aGiftList() });
+    addGiftItemMock.mockResolvedValue({ itemId: "new-item" });
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.type(screen.getByLabelText("Item name"), "Mug");
+    await user.type(screen.getByLabelText("Description (optional)"), "   ");
+    await user.click(screen.getByRole("button", { name: "Add item" }));
+
+    // Assert
+    await waitFor(() => expect(addGiftItemMock).toHaveBeenCalledTimes(1));
+    expect(addGiftItemMock.mock.calls[0][0].description).toBeUndefined();
+    expect(addGiftItemMock).toHaveBeenCalledWith({
+      listId: "list-1",
+      name: "Mug",
+      url: undefined,
+    });
+  });
+
+  it("ListDetailOwnerPage_ShouldSendNoDescription_WhenTheAddItemDescriptionIsOnlyANextLineCharacter", async () => {
+    // Arrange
+    setState({ status: "ready", giftList: aGiftList() });
+    addGiftItemMock.mockResolvedValue({ itemId: "new-item" });
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.type(screen.getByLabelText("Item name"), "Mug");
+    // fireEvent: user.type would not reliably deliver U+0085 as a key.
+    fireEvent.change(screen.getByLabelText("Description (optional)"), {
+      target: { value: "\u0085" },
+    });
+    // Without this, a change that did not take would pass whatever the trim does.
+    expect(screen.getByLabelText("Description (optional)")).toHaveValue("\u0085");
+    await user.click(screen.getByRole("button", { name: "Add item" }));
+
+    // Assert
+    await waitFor(() => expect(addGiftItemMock).toHaveBeenCalledTimes(1));
+    expect(addGiftItemMock.mock.calls[0][0].description).toBeUndefined();
+  });
+
+  it("ListDetailOwnerPage_ShouldKeepTheTypedDescription_WhenTheAddItemRpcFails", async () => {
+    // Arrange
+    setState({ status: "ready", giftList: aGiftList() });
+    addGiftItemMock.mockRejectedValue(new Error("boom"));
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.type(screen.getByLabelText("Item name"), "Mug");
+    await user.type(screen.getByLabelText("Description (optional)"), "Blue");
+    await user.click(screen.getByRole("button", { name: "Add item" }));
+
+    // Assert
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByLabelText("Description (optional)")).toHaveValue("Blue");
+  });
+
+  it("ListDetailOwnerPage_ShouldRenderNoDescriptionSubtitle_WhenTheItemHasNoDescription", () => {
+    // Arrange
+    setState({
+      status: "ready",
+      giftList: aGiftList({
+        items: [
+          {
+            itemId: "item-1",
+            name: "Headphones",
+            description: null,
+            url: "https://example.com/h",
+          },
+        ],
+      }),
+    });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    const name = screen.getByText("Headphones");
+    expect(name.nextElementSibling).toBe(
+      screen.getByRole("link", { name: "https://example.com/h" }),
+    );
+  });
 });
