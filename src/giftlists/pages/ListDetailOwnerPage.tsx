@@ -80,10 +80,11 @@ const GIFT_ITEM_URL_MAX_LENGTH = 2048;
 
 /**
  * `GiftItemDescription`'s own bound (`giftlists/src/GiftLists.Domain/GiftLists/
- * GiftItemDescription.cs`, `MaxLength`, GL-137), shared by the add form (GL-136) and the edit form — enforced here too so a pasted value stops at
- * the domain's own limit rather than reaching the grpc-web call only to be silently dropped by
- * GiftLists' fire-and-forget handler (the same "check client-side, don't let it vanish" reasoning
- * as `GIFT_ITEM_URL_MAX_LENGTH` above and `isAcceptableGiftItemUrl`'s own comment).
+ * GiftItemDescription.cs`, `MaxLength`, GL-137), shared by the add form (GL-136) and the edit
+ * form — enforced here too so a pasted value stops at the domain's own limit rather than reaching
+ * the grpc-web call only to be silently dropped by GiftLists' fire-and-forget handler (the same
+ * "check client-side, don't let it vanish" reasoning as `GIFT_ITEM_URL_MAX_LENGTH` above and
+ * `isAcceptableGiftItemUrl`'s own comment).
  */
 const GIFT_ITEM_DESCRIPTION_MAX_LENGTH = 2000;
 
@@ -994,6 +995,11 @@ export default function ListDetailOwnerPage() {
               aria-describedby={itemUrlError ? itemUrlErrorId : undefined}
             />
           </Group>
+          {itemUrlError && (
+            <Text role="alert" id={itemUrlErrorId} size="xs" c="danger" mt={6}>
+              {itemUrlError}
+            </Text>
+          )}
           <Textarea
             id={addItemDescriptionId}
             label="Description (optional)"
@@ -1014,11 +1020,6 @@ export default function ListDetailOwnerPage() {
           <Button type="submit" size="sm" mt="sm" disabled={isAddingItem}>
             {isAddingItem ? "Adding…" : "Add item"}
           </Button>
-          {itemUrlError && (
-            <Text role="alert" id={itemUrlErrorId} size="xs" c="danger" mt={6}>
-              {itemUrlError}
-            </Text>
-          )}
           {addItemError && (
             <Text role="alert" size="sm" c="danger" mt={6}>
               {addItemError}
