@@ -1214,6 +1214,8 @@ describe("ListDetailOwnerPage", () => {
     fireEvent.change(screen.getByLabelText("Description (optional)"), {
       target: { value: "\u0085" },
     });
+    // Without this, a change that did not take would pass whatever the trim does.
+    expect(screen.getByLabelText("Description (optional)")).toHaveValue("\u0085");
     await user.click(screen.getByRole("button", { name: "Add item" }));
 
     // Assert
