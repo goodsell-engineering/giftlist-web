@@ -554,4 +554,35 @@ describe("SharedListPage", () => {
     // Assert
     expect(refetchMock).toHaveBeenCalled();
   });
+
+  it("SharedListPage_ShouldRenderNoDescriptionSubtitle_WhenTheItemHasNoDescription", () => {
+    // Arrange
+    setState({
+      status: "ready",
+      giftList: {
+        listId: "list-1",
+        name: "Ada's Birthday Wishlist",
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        items: [
+          {
+            itemId: "item-1",
+            name: "Headphones",
+            description: null,
+            url: "https://example.com/h",
+            reserved: false,
+          },
+        ],
+      },
+    });
+    setReserveGift();
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    const name = screen.getByText("Headphones");
+    expect(name.nextElementSibling).toBe(
+      screen.getByRole("link", { name: "https://example.com/h" }),
+    );
+  });
 });

@@ -80,7 +80,7 @@ const GIFT_ITEM_URL_MAX_LENGTH = 2048;
 
 /**
  * `GiftItemDescription`'s own bound (`giftlists/src/GiftLists.Domain/GiftLists/
- * GiftItemDescription.cs`, `MaxLength`, GL-137) — enforced here too so a pasted value stops at
+ * GiftItemDescription.cs`, `MaxLength`, GL-137), shared by the add form (GL-136) and the edit form — enforced here too so a pasted value stops at
  * the domain's own limit rather than reaching the grpc-web call only to be silently dropped by
  * GiftLists' fire-and-forget handler (the same "check client-side, don't let it vanish" reasoning
  * as `GIFT_ITEM_URL_MAX_LENGTH` above and `isAcceptableGiftItemUrl`'s own comment).
@@ -313,6 +313,7 @@ export default function ListDetailOwnerPage() {
   const itemUrlId = useId();
   const itemUrlErrorId = useId();
   const itemDescriptionId = useId();
+  const addItemDescriptionId = useId();
 
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -321,6 +322,7 @@ export default function ListDetailOwnerPage() {
 
   const [itemName, setItemName] = useState("");
   const [itemUrl, setItemUrl] = useState("");
+  const [itemDescription, setItemDescription] = useState("");
   const [addItemError, setAddItemError] = useState<string | null>(null);
   const [itemUrlError, setItemUrlError] = useState<string | null>(null);
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -415,15 +417,22 @@ export default function ListDetailOwnerPage() {
         return;
       }
 
+      // Trimmed the way GiftLists trims (not JS `trim()`), so a value GiftLists would store as
+      // null is not sent at all and the request reads the same as one with no description.
+      const trimmedDescription = trimLikeGiftLists(itemDescription);
+
       setIsAddingItem(true);
       try {
         const response = await giftListsClient.addGiftItem({
           listId: id,
           name: itemName,
           url: trimmedUrl === "" ? undefined : trimmedUrl,
+          description:
+            trimmedDescription === "" ? undefined : trimmedDescription,
         });
         setItemName("");
         setItemUrl("");
+        setItemDescription("");
         const confirmed = await confirmChange((list) =>
           list.items.some((item) => item.itemId === response.itemId),
         );
@@ -436,7 +445,7 @@ export default function ListDetailOwnerPage() {
         setIsAddingItem(false);
       }
     },
-    [giftListsClient, itemName, itemUrl, confirmChange],
+    [giftListsClient, itemName, itemUrl, itemDescription, confirmChange],
   );
 
   const handleRemoveItem = useCallback(
@@ -984,10 +993,27 @@ export default function ListDetailOwnerPage() {
               aria-invalid={itemUrlError ? true : undefined}
               aria-describedby={itemUrlError ? itemUrlErrorId : undefined}
             />
-            <Button type="submit" size="sm" disabled={isAddingItem}>
-              {isAddingItem ? "Adding…" : "Add item"}
-            </Button>
           </Group>
+          <Textarea
+            id={addItemDescriptionId}
+            label="Description (optional)"
+            placeholder="e.g. size M, navy blue"
+            minRows={2}
+            maxLength={GIFT_ITEM_DESCRIPTION_MAX_LENGTH}
+            mt="sm"
+            value={itemDescription}
+            onChange={(event) =>
+              setItemDescription(
+                event.target.value.slice(0, GIFT_ITEM_DESCRIPTION_MAX_LENGTH),
+              )
+            }
+          />
+          <Text size="xs" c="var(--gl-text-muted)" mt={4}>
+            {itemDescription.length} / {GIFT_ITEM_DESCRIPTION_MAX_LENGTH}
+          </Text>
+          <Button type="submit" size="sm" mt="sm" disabled={isAddingItem}>
+            {isAddingItem ? "Adding…" : "Add item"}
+          </Button>
           {itemUrlError && (
             <Text role="alert" id={itemUrlErrorId} size="xs" c="danger" mt={6}>
               {itemUrlError}
