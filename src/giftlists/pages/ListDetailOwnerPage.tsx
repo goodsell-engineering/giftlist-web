@@ -62,6 +62,7 @@ import { useAuth } from "../../identity/auth/useAuth";
 import { useGiftList } from "../hooks/useGiftList";
 import { createGiftListsClient } from "../api/giftListsClient";
 import { describeGiftListsCommandError } from "../api/giftListsErrors";
+import { trimLikeGiftLists } from "../trimLikeGiftLists";
 import { TopBar } from "../../ui/TopBar";
 import { Page } from "../../ui/Page";
 import { formatCalendarDate } from "../../ui/dates";
@@ -212,10 +213,6 @@ interface LocationState {
 const CHANGE_NOT_YET_VISIBLE_MESSAGE =
   "That change hasn't shown up yet. It may still be processing — try refreshing in a moment.";
 
-// GiftLists normalises with .NET string.Trim() (char.IsWhiteSpace), which also strips U+0085;
-// JS trim() does not. \s is exactly trim()'s set, so this only adds U+0085.
-const trimLikeGiftLists = (value: string) => value.replace(/^[\s\u0085]+|[\s\u0085]+$/g, "");
-
 type ListDetailStatus = "active" | "expiring-soon" | "expired";
 
 const LIST_DETAIL_EXPIRY_WARNING_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -365,7 +362,8 @@ export default function ListDetailOwnerPage() {
       setChangeConfirmationWarning(null);
       setIsSavingRename(true);
       try {
-        const newName = renameValue;
+        // GiftListName trims on the server, so confirm against the same trimmed value we send.
+        const newName = trimLikeGiftLists(renameValue);
         await giftListsClient.renameGiftList({ listId: id, name: newName });
         setIsRenaming(false);
         // RenameGiftList is fire-and-forget too (giftlists.proto) — confirmChange keeps this
