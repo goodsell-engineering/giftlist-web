@@ -293,6 +293,11 @@ describe("ListDetailOwnerPage", () => {
     const giftList = aGiftList({ name: "Birthday List" });
     setState({ status: "ready", giftList });
     renameGiftListMock.mockResolvedValue({});
+    // The read model holds the name GiftLists stored, so the notice depends on the real predicate.
+    confirmChangeMock.mockImplementation(
+      async (predicate: (list: GiftListProjection) => boolean) =>
+        predicate(aGiftList({ name: "Birthday" })),
+    );
     const user = userEvent.setup();
     renderListDetailPage();
 
@@ -315,6 +320,12 @@ describe("ListDetailOwnerPage", () => {
     ) => boolean;
     expect(predicate(aGiftList({ name: "Birthday" }))).toBe(true);
     expect(predicate(aGiftList({ name: "Birthday List" }))).toBe(false);
+    // Let the save finish (the busy label clears) before asserting the notice never appeared.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Saving…" }),
+      ).not.toBeInTheDocument(),
+    );
     expect(screen.queryByText(/hasn't shown up yet/i)).not.toBeInTheDocument();
   });
 
