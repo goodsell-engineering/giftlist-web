@@ -287,6 +287,48 @@ describe("ListDetailOwnerPage", () => {
     expect(predicate(aGiftList({ name: "Birthday Wishlist" }))).toBe(false);
   });
 
+  it("ListDetailOwnerPage_ShouldSendAndConfirmTheTrimmedName_WhenARenameHasSurroundingWhitespace", async () => {
+    // Arrange — GiftLists trims with .NET Trim(), which also strips U+0085, so the web must send
+    // and confirm that same trimmed name or the confirmation falsely reports "not shown up yet".
+    const giftList = aGiftList({ name: "Birthday List" });
+    setState({ status: "ready", giftList });
+    renameGiftListMock.mockResolvedValue({});
+    // The read model holds the name GiftLists stored, so the notice depends on the real predicate.
+    confirmChangeMock.mockImplementation(
+      async (predicate: (list: GiftListProjection) => boolean) =>
+        predicate(aGiftList({ name: "Birthday" })),
+    );
+    const user = userEvent.setup();
+    renderListDetailPage();
+
+    // Act
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    const input = screen.getByLabelText("List name");
+    fireEvent.change(input, { target: { value: "  Birthday \u0085" } });
+    await user.click(await screen.findByRole("button", { name: "Save" }));
+
+    // Assert
+    await waitFor(() =>
+      expect(renameGiftListMock).toHaveBeenCalledWith({
+        listId: "list-1",
+        name: "Birthday",
+      }),
+    );
+    await waitFor(() => expect(confirmChangeMock).toHaveBeenCalled());
+    const predicate = confirmChangeMock.mock.calls[0][0] as (
+      list: GiftListProjection,
+    ) => boolean;
+    expect(predicate(aGiftList({ name: "Birthday" }))).toBe(true);
+    expect(predicate(aGiftList({ name: "Birthday List" }))).toBe(false);
+    // Let the save finish (the busy label clears) before asserting the notice never appeared.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Saving…" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/hasn't shown up yet/i)).not.toBeInTheDocument();
+  });
+
   it("ListDetailOwnerPage_ShouldShowAWarning_WhenTheRenameCannotBeConfirmed", async () => {
     // Arrange — batch-15 review item 1: the change must never be presented as settled when it
     // could not be confirmed within the ladder.
