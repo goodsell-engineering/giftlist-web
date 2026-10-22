@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../../test/render";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "../../test/render";
+import { elementsWithExactTextContent } from "../../test/textContent";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -1328,5 +1335,77 @@ describe("ListDetailOwnerPage", () => {
     expect(badge?.nextElementSibling).toBe(
       screen.getByRole("link", { name: "https://example.com/h" }),
     );
+  });
+
+  it("ListDetailOwnerPage_ShouldShowThePriorityLevelBadge_WhenTheItemHasAPriority", () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        { itemId: "item-1", name: "Lamp", description: null, url: null, priority: 4 },
+      ],
+    });
+    setState({ status: "ready", giftList });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    const itemRow = screen.getByText("Lamp").closest("li") as HTMLElement;
+    expect(
+      elementsWithExactTextContent(itemRow, "Priority: Really want").length,
+    ).toBeGreaterThan(0);
+    expect(itemRow).not.toHaveTextContent(/Priority: Want/);
+    expect(itemRow).not.toHaveTextContent(/Nice to have|Would like|Would love/);
+  });
+
+  it("ListDetailOwnerPage_ShouldShowThePriorityBadgeReadOnly_WhenTheListHasExpired", () => {
+    // Arrange
+    const giftList = aGiftList({
+      expiresAt: new Date(Date.now() - 86_400_000).toISOString(),
+      items: [
+        { itemId: "item-1", name: "Lamp", description: null, url: null, priority: 2 },
+      ],
+    });
+    setState({ status: "ready", giftList });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    const itemRow = screen.getByText("Lamp").closest("li") as HTMLElement;
+    expect(
+      elementsWithExactTextContent(itemRow, "Priority: Would like").length,
+    ).toBeGreaterThan(0);
+    for (const role of ["combobox", "listbox", "radio", "textbox"]) {
+      expect(within(itemRow).queryByRole(role)).not.toBeInTheDocument();
+    }
+  });
+
+  it("ListDetailOwnerPage_ShouldKeepTheReceivedItemOrder_WhateverThePriorities", () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        { itemId: "a", name: "First", description: null, url: null, priority: 5 },
+        { itemId: "b", name: "Second", description: null, url: null, priority: 1 },
+        { itemId: "c", name: "Third", description: null, url: null, priority: 3 },
+      ],
+    });
+    setState({ status: "ready", giftList });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    const names = ["First", "Second", "Third"].map((name) =>
+      screen.getByText(name),
+    );
+    expect(
+      names[0].compareDocumentPosition(names[1]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      names[1].compareDocumentPosition(names[2]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
