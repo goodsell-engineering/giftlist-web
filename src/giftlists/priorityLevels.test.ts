@@ -42,8 +42,8 @@ describe("priorityLevelName", () => {
     },
   );
 
-  it.each([Number.NaN, undefined as unknown as number])(
-    "PriorityLevelName_ShouldReadAsWant_WhenTheValueIsNotAFiniteNumber (%s)",
+  it.each([Number.NaN, undefined as unknown as number, 2.5, 7.5])(
+    "PriorityLevelName_ShouldReadAsWant_WhenTheValueIsNotAnInteger (%s)",
     (value) => {
       // Act
       const result = priorityLevelName(value);

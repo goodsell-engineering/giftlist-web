@@ -17,14 +17,14 @@ export const PRIORITY_LEVELS: readonly PriorityLevel[] = [
 
 /**
  * Names a stored priority. A value outside 1 to 5 is clamped to the nearest level, so a stray
- * number never renders as a digit or throws. A value that is not a finite number (absent at
- * runtime) reads as 3, matching the Gateway's "absent means 3". Only the web clamps; the Gateway
- * serves the stored number.
+ * number never renders as a digit. A value that is not an integer (a fraction, NaN, or absent at
+ * runtime) reads as 3, matching the Gateway's "absent means 3", so the lookup never throws. Only
+ * the web clamps; the Gateway serves the stored number.
  */
 export function priorityLevelName(priority: number): string {
   const lowest = PRIORITY_LEVELS[0];
   const highest = PRIORITY_LEVELS[PRIORITY_LEVELS.length - 1];
-  if (!Number.isFinite(priority)) {
+  if (!Number.isInteger(priority)) {
     return PRIORITY_LEVELS[2].name;
   }
   const clamped = Math.min(highest.value, Math.max(lowest.value, priority));
