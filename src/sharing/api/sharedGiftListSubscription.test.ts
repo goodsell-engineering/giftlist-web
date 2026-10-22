@@ -131,6 +131,21 @@ describe("subscribeToSharedGiftListChanged", () => {
     expect(subscribeMessage.payload.query).toContain("sharedGiftListChanged");
   });
 
+  it("SubscribeToSharedGiftListChanged_ShouldSelectPriority_OnEveryItem", () => {
+    // Arrange
+    const { socket } = createHarness();
+    socket.emitOpen();
+    socket.emitMessage({ type: "connection_ack" });
+
+    // Act
+    const subscribeMessage = socket.sent[1] as { payload: { query: string } };
+
+    // Assert
+    expect(subscribeMessage.payload.query).toMatch(
+      /items\s*\{[^}]*\bpriority\b[^}]*\}/,
+    );
+  });
+
   it("SubscribeToSharedGiftListChanged_ShouldCallOnData_WhenANextMessageCarriesTheGuestView", () => {
     // Arrange
     const { socket, onData } = createHarness();
@@ -144,6 +159,7 @@ describe("subscribeToSharedGiftListChanged", () => {
           description: null,
           url: null,
           reserved: true,
+          priority: 3,
         },
       ],
     });

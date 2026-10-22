@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../../test/render";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "../../test/render";
+import { elementsWithExactTextContent } from "../../test/textContent";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -107,7 +114,7 @@ describe("ListDetailOwnerPage", () => {
     // Arrange
     const giftList = aGiftList({
       items: [
-        { itemId: "item-1", name: "Headphones", description: "Noise-cancelling", url: null },
+        { itemId: "item-1", name: "Headphones", description: "Noise-cancelling", url: null, priority: 3 },
       ],
     });
     setState({ status: "ready", giftList });
@@ -131,7 +138,7 @@ describe("ListDetailOwnerPage", () => {
     // documents the guarantee.
     const giftList = aGiftList({
       items: [
-        { itemId: "item-1", name: "Headphones", description: null, url: null },
+        { itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 },
       ],
     });
     setState({ status: "ready", giftList });
@@ -383,7 +390,7 @@ describe("ListDetailOwnerPage", () => {
     expect(
       predicate(
         aGiftList({
-          items: [{ itemId: "new-item", name: "x", description: null, url: null }],
+          items: [{ itemId: "new-item", name: "x", description: null, url: null, priority: 3 }],
         }),
       ),
     ).toBe(true);
@@ -564,7 +571,7 @@ describe("ListDetailOwnerPage", () => {
   it("ListDetailOwnerPage_ShouldRemoveAnItemAndConfirmItDisappears_WhenRemoveIsClicked", async () => {
     // Arrange
     const giftList = aGiftList({
-      items: [{ itemId: "item-1", name: "Headphones", description: null, url: null }],
+      items: [{ itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 }],
     });
     setState({ status: "ready", giftList });
     removeGiftItemMock.mockResolvedValue({});
@@ -588,7 +595,7 @@ describe("ListDetailOwnerPage", () => {
     expect(
       predicate(
         aGiftList({
-          items: [{ itemId: "item-1", name: "Headphones", description: null, url: null }],
+          items: [{ itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 }],
         }),
       ),
     ).toBe(false);
@@ -604,6 +611,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -642,6 +650,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: "New description",
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -656,6 +665,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: "Old description",
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -672,6 +682,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -710,6 +721,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: null,
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -727,6 +739,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -764,6 +777,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: "New",
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -782,6 +796,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -819,6 +834,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: null,
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -835,6 +851,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Noise-cancelling",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -857,7 +874,7 @@ describe("ListDetailOwnerPage", () => {
     // Arrange
     const giftList = aGiftList({
       items: [
-        { itemId: "item-1", name: "Headphones", description: null, url: null },
+        { itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 },
       ],
     });
     setState({ status: "ready", giftList });
@@ -878,7 +895,7 @@ describe("ListDetailOwnerPage", () => {
     // Arrange
     const giftList = aGiftList({
       items: [
-        { itemId: "item-1", name: "Headphones", description: null, url: null },
+        { itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 },
       ],
     });
     setState({ status: "ready", giftList });
@@ -907,6 +924,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Noise-cancelling",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -933,6 +951,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -964,6 +983,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -992,6 +1012,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -1023,12 +1044,14 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
         {
           itemId: "item-2",
           name: "Mug",
           description: null,
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -1075,6 +1098,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Line one\nLine two",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -1183,7 +1207,7 @@ describe("ListDetailOwnerPage", () => {
       predicate(
         aGiftList({
           items: [
-            { itemId: "new-item", name: "x", description: null, url: null },
+            { itemId: "new-item", name: "x", description: null, url: null, priority: 3 },
           ],
         }),
       ),
@@ -1293,6 +1317,7 @@ describe("ListDetailOwnerPage", () => {
             name: "Headphones",
             description: null,
             url: "https://example.com/h",
+            priority: 3,
           },
         ],
       }),
@@ -1303,8 +1328,84 @@ describe("ListDetailOwnerPage", () => {
 
     // Assert
     const name = screen.getByText("Headphones");
-    expect(name.nextElementSibling).toBe(
+    // The priority badge sits between the name and the link, so a missing description leaves
+    // nothing else there.
+    const badge = name.nextElementSibling;
+    expect(badge).toHaveTextContent("Priority: Want");
+    expect(badge?.nextElementSibling).toBe(
       screen.getByRole("link", { name: "https://example.com/h" }),
     );
+  });
+
+  it("ListDetailOwnerPage_ShouldShowThePriorityLevelBadge_WhenTheItemHasAPriority", () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        { itemId: "item-1", name: "Lamp", description: null, url: null, priority: 4 },
+      ],
+    });
+    setState({ status: "ready", giftList });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    const itemRow = screen.getByText("Lamp").closest("li") as HTMLElement;
+    expect(
+      elementsWithExactTextContent(itemRow, "Priority: Really want").length,
+    ).toBeGreaterThan(0);
+    expect(itemRow).not.toHaveTextContent(/Priority: Want/);
+    expect(itemRow).not.toHaveTextContent(/Nice to have|Would like|Would love/);
+  });
+
+  it("ListDetailOwnerPage_ShouldShowThePriorityBadgeReadOnly_WhenTheListHasExpired", () => {
+    // Arrange
+    const giftList = aGiftList({
+      expiresAt: new Date(Date.now() - 86_400_000).toISOString(),
+      items: [
+        { itemId: "item-1", name: "Lamp", description: null, url: null, priority: 4 },
+      ],
+    });
+    setState({ status: "ready", giftList });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    const itemRow = screen.getByText("Lamp").closest("li") as HTMLElement;
+    expect(
+      elementsWithExactTextContent(itemRow, "Priority: Really want").length,
+    ).toBeGreaterThan(0);
+    for (const role of ["combobox", "listbox", "radio", "textbox"]) {
+      expect(within(itemRow).queryByRole(role)).not.toBeInTheDocument();
+    }
+  });
+
+  it("ListDetailOwnerPage_ShouldKeepTheReceivedItemOrder_WhateverThePriorities", () => {
+    // Arrange
+    const giftList = aGiftList({
+      items: [
+        { itemId: "a", name: "First", description: null, url: null, priority: 5 },
+        { itemId: "b", name: "Second", description: null, url: null, priority: 1 },
+        { itemId: "c", name: "Third", description: null, url: null, priority: 3 },
+      ],
+    });
+    setState({ status: "ready", giftList });
+
+    // Act
+    renderListDetailPage();
+
+    // Assert
+    const names = ["First", "Second", "Third"].map((name) =>
+      screen.getByText(name),
+    );
+    expect(
+      names[0].compareDocumentPosition(names[1]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      names[1].compareDocumentPosition(names[2]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

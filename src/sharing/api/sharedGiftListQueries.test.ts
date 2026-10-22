@@ -61,6 +61,25 @@ describe("fetchSharedGiftList", () => {
     expect(query).toMatch(/\breserved\b/);
   });
 
+  it("FetchSharedGiftList_ShouldSelectPriority_OnEveryItem", async () => {
+    // Arrange
+    graphqlRequestAnonymousMock.mockResolvedValue({
+      sharedGiftList: {
+        listId: "list-1",
+        name: "Birthday Wishlist",
+        expiresAt: new Date().toISOString(),
+        items: [],
+      },
+    });
+
+    // Act
+    await fetchSharedGiftList(aShareToken());
+
+    // Assert
+    const [query] = graphqlRequestAnonymousMock.mock.calls[0];
+    expect(query).toMatch(/items\s*\{[^}]*\bpriority\b[^}]*\}/);
+  });
+
   it("FetchSharedGiftList_ShouldCallTheAnonymousTransport_WithTheShareTokenAsAVariable", async () => {
     // Arrange — never the authenticated `graphqlRequest`; a guest holds no access token.
     graphqlRequestAnonymousMock.mockResolvedValue({

@@ -13,6 +13,8 @@ export interface GiftItemProjection {
   name: string;
   description: string | null;
   url: string | null;
+  /** 1 to 5, named by priorityLevels.ts. */
+  priority: number;
 }
 
 export interface GiftListProjection {
@@ -34,7 +36,7 @@ const GIFT_LIST_FIELDS = `
   expiresAt
   shareToken
   createdAt
-  items { itemId name description url }
+  items { itemId name description url priority }
 `;
 
 const MY_GIFT_LISTS_QUERY = `

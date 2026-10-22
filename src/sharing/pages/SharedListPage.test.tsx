@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "../../test/render";
+import { act, fireEvent, render, screen, within } from "../../test/render";
+import { elementsWithExactTextContent } from "../../test/textContent";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -12,6 +13,12 @@ import type {
   UseReserveGiftResult,
 } from "../hooks/useReserveGift";
 import type { ReserveGiftErrorInfo } from "../api/reservationsErrors";
+import type {
+  SharedGiftItem,
+  SharedGiftListView,
+} from "../api/sharedGiftListQueries";
+import { fetchSharedGiftList } from "../api/sharedGiftListQueries";
+import { subscribeToSharedGiftListChanged } from "../api/sharedGiftListSubscription";
 import { aShareToken } from "../../test/shareTokens";
 
 vi.mock("../hooks/useSharedGiftList", () => ({
@@ -21,6 +28,15 @@ vi.mock("../hooks/useReserveGift", () => ({
   useReserveGift: vi.fn(),
 }));
 
+vi.mock("../api/sharedGiftListQueries", () => ({
+  fetchSharedGiftList: vi.fn(),
+}));
+vi.mock("../api/sharedGiftListSubscription", () => ({
+  subscribeToSharedGiftListChanged: vi.fn(),
+}));
+
+const fetchSharedGiftListMock = vi.mocked(fetchSharedGiftList);
+const subscribeMock = vi.mocked(subscribeToSharedGiftListChanged);
 const useSharedGiftListMock = vi.mocked(useSharedGiftList);
 const useReserveGiftMock = vi.mocked(useReserveGift);
 const refetchMock = vi.fn();
@@ -50,6 +66,28 @@ function stateForConstant(uiState: ItemReservationUiState) {
   return () => uiState;
 }
 
+function anItem(overrides: Partial<SharedGiftItem> = {}): SharedGiftItem {
+  return {
+    itemId: "item-1",
+    name: "Item",
+    description: null,
+    url: null,
+    reserved: false,
+    priority: 3,
+    ...overrides,
+  };
+}
+
+function readyState(
+  items: SharedGiftItem[],
+  expiresAt = new Date(Date.now() + 86_400_000).toISOString(),
+): { status: "ready"; giftList: SharedGiftListView } {
+  return {
+    status: "ready",
+    giftList: { listId: "list-1", name: "Ada's Birthday Wishlist", expiresAt, items },
+  };
+}
+
 function renderSharedListPage() {
   return render(
     <MemoryRouter initialEntries={[`/share/${aShareToken()}`]}>
@@ -62,7 +100,11 @@ function renderSharedListPage() {
 
 describe("SharedListPage", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     refetchMock.mockClear();
+    fetchSharedGiftListMock.mockReset();
+    subscribeMock.mockReset();
     reserveMock.mockClear();
     dismissConflictMock.mockClear();
   });
@@ -83,6 +125,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: true,
+            priority: 3,
           },
         ],
       },
@@ -128,6 +171,7 @@ describe("SharedListPage", () => {
             description: "Noise-cancelling, any colour",
             url: "https://example.com/headphones",
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -164,6 +208,7 @@ describe("SharedListPage", () => {
             description: "Noise-cancelling, any colour",
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -201,6 +246,7 @@ describe("SharedListPage", () => {
             description: "Line one\nLine two",
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -235,6 +281,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -267,6 +314,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -302,6 +350,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: true,
+            priority: 3,
           },
         ],
       },
@@ -345,6 +394,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: true,
+            priority: 3,
           },
         ],
       },
@@ -386,6 +436,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -426,6 +477,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -487,6 +539,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -570,6 +623,7 @@ describe("SharedListPage", () => {
             description: null,
             url: "https://example.com/h",
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -581,8 +635,192 @@ describe("SharedListPage", () => {
 
     // Assert
     const name = screen.getByText("Headphones");
-    expect(name.nextElementSibling).toBe(
+    // The priority badge sits between the name and the link, so a missing description leaves
+    // nothing else there.
+    const badge = name.nextElementSibling;
+    expect(badge).toHaveTextContent("Priority: Want");
+    expect(badge?.nextElementSibling).toBe(
       screen.getByRole("link", { name: "https://example.com/h" }),
     );
+  });
+
+  it("SharedListPage_ShouldShowThePriorityLevelBadgeAndNoLegend_WhenTheItemHasAPriority", () => {
+    // Arrange
+    setState(readyState([anItem({ itemId: "i1", name: "Lamp", priority: 2 })]));
+    setReserveGift();
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    const row = screen.getByText("Lamp").closest("li") as HTMLElement;
+    expect(
+      elementsWithExactTextContent(row, "Priority: Would like").length,
+    ).toBeGreaterThan(0);
+    const outsideRows = document.body.cloneNode(true) as HTMLElement;
+    outsideRows.querySelectorAll("li").forEach((li) => li.remove());
+    expect(outsideRows).not.toHaveTextContent(/Priority/);
+  });
+
+  it("SharedListPage_ShouldShowThePushedPriorityLevelWithoutARefetch_WhenASubscriptionPushArrives", async () => {
+    // Arrange — the real hook over mocked api modules: this test is about the live path.
+    const actual = await vi.importActual<
+      typeof import("../hooks/useSharedGiftList")
+    >("../hooks/useSharedGiftList");
+    useSharedGiftListMock.mockImplementation(actual.useSharedGiftList);
+    setReserveGift();
+    fetchSharedGiftListMock.mockResolvedValue(
+      readyState([anItem({ itemId: "i1", name: "Lamp", priority: 3 })])
+        .giftList,
+    );
+    let pushed: ((view: SharedGiftListView) => void) | null = null;
+    subscribeMock.mockImplementation((_token, handlers) => {
+      pushed = handlers.onData;
+      return { close: vi.fn() };
+    });
+    renderSharedListPage();
+    await screen.findByText("Lamp");
+
+    // Act
+    act(() => {
+      pushed?.(
+        readyState([anItem({ itemId: "i1", name: "Lamp", priority: 5 })])
+          .giftList,
+      );
+    });
+
+    // Assert
+    const row = screen.getByText("Lamp").closest("li") as HTMLElement;
+    expect(
+      elementsWithExactTextContent(row, "Priority: Would love").length,
+    ).toBeGreaterThan(0);
+    expect(fetchSharedGiftListMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("SharedListPage_ShouldShowThePriorityBadgeAlongsideTheExpiredBanner_WhenTheListHasExpired", () => {
+    // Arrange
+    setState(
+      readyState(
+        [anItem({ itemId: "i1", name: "Lamp", priority: 4 })],
+        new Date(Date.now() - 86_400_000).toISOString(),
+      ),
+    );
+    setReserveGift();
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    expect(screen.getByRole("alert")).toHaveTextContent(/expired/i);
+    const row = screen.getByText("Lamp").closest("li") as HTMLElement;
+    expect(
+      elementsWithExactTextContent(row, "Priority: Really want").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("SharedListPage_ShouldOfferNoWayToChangePriority_WhenTheListIsLive", async () => {
+    // Arrange
+    setState(readyState([anItem({ itemId: "i1", name: "Lamp", priority: 3 })]));
+    setReserveGift();
+    renderSharedListPage();
+    const row = screen.getByText("Lamp").closest("li") as HTMLElement;
+    // The last match is the innermost element, the badge text itself.
+    const badge = elementsWithExactTextContent(row, "Priority: Want").at(-1) as Element;
+    // Every transport a request could leave by: browser fetch (GraphQL, gRPC-web) and sockets
+    // (GraphQL subscriptions). Spied after render so only the guest's interaction is counted.
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const socketSendSpy = vi.spyOn(WebSocket.prototype, "send");
+    const socketOpenSpy = vi.fn();
+    vi.stubGlobal(
+      "WebSocket",
+      Object.assign(function (this: unknown) { socketOpenSpy(); }, {
+        prototype: WebSocket.prototype,
+      }),
+    );
+    fetchSharedGiftListMock.mockClear();
+    subscribeMock.mockClear();
+
+    // Act
+    await userEvent.click(badge);
+    await userEvent.dblClick(badge);
+    await userEvent.hover(badge);
+    await userEvent.keyboard("{Enter}{ }{ArrowUp}{ArrowDown}");
+    // The badge is not focusable, so userEvent's keys land on the body; send them to the badge
+    // directly. Query it afresh: the row's nodes may have been replaced since the first click.
+    const liveBadge = elementsWithExactTextContent(
+      screen.getByText("Lamp").closest("li") as HTMLElement,
+      "Priority: Want",
+    ).at(-1) as Element;
+    for (const key of ["Enter", " ", "ArrowUp", "ArrowDown"]) {
+      fireEvent.keyDown(liveBadge, { key });
+      fireEvent.keyUp(liveBadge, { key });
+    }
+
+    // Assert
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(socketSendSpy).not.toHaveBeenCalled();
+    expect(socketOpenSpy).not.toHaveBeenCalled();
+    expect(fetchSharedGiftListMock).not.toHaveBeenCalled();
+    expect(subscribeMock).not.toHaveBeenCalled();
+    for (const role of ["combobox", "listbox", "radio", "textbox"]) {
+      expect(within(row).queryByRole(role)).not.toBeInTheDocument();
+    }
+    expect(reserveMock).not.toHaveBeenCalled();
+    expect(refetchMock).not.toHaveBeenCalled();
+    expect(
+      elementsWithExactTextContent(row, "Priority: Want").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("SharedListPage_ShouldMapEachStoredPriorityToItsLevelName_InRowOrder", () => {
+    // Arrange
+    setState(
+      readyState(
+        [1, 2, 3, 4, 5].map((priority, index) =>
+          anItem({ itemId: `i${index}`, name: `Item ${"ABCDE"[index]}`, priority }),
+        ),
+      ),
+    );
+    setReserveGift();
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    const rows = screen.getAllByRole("listitem");
+    const expected = [
+      "Priority: Nice to have",
+      "Priority: Would like",
+      "Priority: Want",
+      "Priority: Really want",
+      "Priority: Would love",
+    ];
+    expected.forEach((text, index) => {
+      expect(rows[index]).toHaveTextContent(`Item ${"ABCDE"[index]}`);
+      expect(
+        elementsWithExactTextContent(rows[index], text).length,
+      ).toBeGreaterThan(0);
+    });
+  });
+
+  it("SharedListPage_ShouldKeepTheReceivedItemOrder_WhateverThePriorities", () => {
+    // Arrange
+    setState(
+      readyState([
+        anItem({ itemId: "a", name: "First", priority: 5 }),
+        anItem({ itemId: "b", name: "Second", priority: 1 }),
+        anItem({ itemId: "c", name: "Third", priority: 3 }),
+      ]),
+    );
+    setReserveGift();
+
+    // Act
+    renderSharedListPage();
+
+    // Assert
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("First");
+    expect(rows[1]).toHaveTextContent("Second");
+    expect(rows[2]).toHaveTextContent("Third");
   });
 });
