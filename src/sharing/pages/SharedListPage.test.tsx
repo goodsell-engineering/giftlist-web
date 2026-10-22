@@ -722,7 +722,8 @@ describe("SharedListPage", () => {
     setReserveGift();
     renderSharedListPage();
     const row = screen.getByText("Lamp").closest("li") as HTMLElement;
-    const badge = elementsWithExactTextContent(row, "Priority: Want")[0];
+    // The last match is the innermost element, the badge text itself.
+    const badge = elementsWithExactTextContent(row, "Priority: Want").at(-1) as Element;
 
     // Act
     await userEvent.click(badge);
