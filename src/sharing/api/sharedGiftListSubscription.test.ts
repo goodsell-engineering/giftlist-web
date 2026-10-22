@@ -144,6 +144,7 @@ describe("subscribeToSharedGiftListChanged", () => {
           description: null,
           url: null,
           reserved: true,
+          priority: 3,
         },
       ],
     });

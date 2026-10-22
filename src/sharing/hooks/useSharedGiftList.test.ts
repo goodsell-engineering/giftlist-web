@@ -147,6 +147,7 @@ describe("useSharedGiftList", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       }),
@@ -163,6 +164,7 @@ describe("useSharedGiftList", () => {
           description: null,
           url: null,
           reserved: true,
+          priority: 3,
         },
       ],
     });

@@ -83,6 +83,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: true,
+            priority: 3,
           },
         ],
       },
@@ -128,6 +129,7 @@ describe("SharedListPage", () => {
             description: "Noise-cancelling, any colour",
             url: "https://example.com/headphones",
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -164,6 +166,7 @@ describe("SharedListPage", () => {
             description: "Noise-cancelling, any colour",
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -201,6 +204,7 @@ describe("SharedListPage", () => {
             description: "Line one\nLine two",
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -235,6 +239,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -267,6 +272,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -302,6 +308,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: true,
+            priority: 3,
           },
         ],
       },
@@ -345,6 +352,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: true,
+            priority: 3,
           },
         ],
       },
@@ -386,6 +394,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -426,6 +435,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -487,6 +497,7 @@ describe("SharedListPage", () => {
             description: null,
             url: null,
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -570,6 +581,7 @@ describe("SharedListPage", () => {
             description: null,
             url: "https://example.com/h",
             reserved: false,
+            priority: 3,
           },
         ],
       },
@@ -581,7 +593,11 @@ describe("SharedListPage", () => {
 
     // Assert
     const name = screen.getByText("Headphones");
-    expect(name.nextElementSibling).toBe(
+    // The priority badge sits between the name and the link, so a missing description leaves
+    // nothing else there.
+    const badge = name.nextElementSibling;
+    expect(badge).toHaveTextContent("Priority: Want");
+    expect(badge?.nextElementSibling).toBe(
       screen.getByRole("link", { name: "https://example.com/h" }),
     );
   });

@@ -130,7 +130,7 @@ describe("DashboardPage", () => {
         listId: "list-2",
         name: "Housewarming",
         items: [
-          { itemId: "item-1", name: "Mug", description: null, url: null },
+          { itemId: "item-1", name: "Mug", description: null, url: null, priority: 3 },
         ],
       }),
     ];

@@ -63,6 +63,7 @@ import { useGiftList } from "../hooks/useGiftList";
 import { createGiftListsClient } from "../api/giftListsClient";
 import { describeGiftListsCommandError } from "../api/giftListsErrors";
 import { trimLikeGiftLists } from "../trimLikeGiftLists";
+import { PriorityBadge } from "../PriorityBadge";
 import { TopBar } from "../../ui/TopBar";
 import { Page } from "../../ui/Page";
 import { formatCalendarDate } from "../../ui/dates";
@@ -845,6 +846,9 @@ export default function ListDetailOwnerPage() {
                         {item.description}
                       </Text>
                     )}
+                    <Box>
+                      <PriorityBadge priority={item.priority} />
+                    </Box>
                     {item.url && (
                       <Anchor
                         href={item.url}

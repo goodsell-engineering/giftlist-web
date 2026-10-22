@@ -107,7 +107,7 @@ describe("ListDetailOwnerPage", () => {
     // Arrange
     const giftList = aGiftList({
       items: [
-        { itemId: "item-1", name: "Headphones", description: "Noise-cancelling", url: null },
+        { itemId: "item-1", name: "Headphones", description: "Noise-cancelling", url: null, priority: 3 },
       ],
     });
     setState({ status: "ready", giftList });
@@ -131,7 +131,7 @@ describe("ListDetailOwnerPage", () => {
     // documents the guarantee.
     const giftList = aGiftList({
       items: [
-        { itemId: "item-1", name: "Headphones", description: null, url: null },
+        { itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 },
       ],
     });
     setState({ status: "ready", giftList });
@@ -383,7 +383,7 @@ describe("ListDetailOwnerPage", () => {
     expect(
       predicate(
         aGiftList({
-          items: [{ itemId: "new-item", name: "x", description: null, url: null }],
+          items: [{ itemId: "new-item", name: "x", description: null, url: null, priority: 3 }],
         }),
       ),
     ).toBe(true);
@@ -564,7 +564,7 @@ describe("ListDetailOwnerPage", () => {
   it("ListDetailOwnerPage_ShouldRemoveAnItemAndConfirmItDisappears_WhenRemoveIsClicked", async () => {
     // Arrange
     const giftList = aGiftList({
-      items: [{ itemId: "item-1", name: "Headphones", description: null, url: null }],
+      items: [{ itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 }],
     });
     setState({ status: "ready", giftList });
     removeGiftItemMock.mockResolvedValue({});
@@ -588,7 +588,7 @@ describe("ListDetailOwnerPage", () => {
     expect(
       predicate(
         aGiftList({
-          items: [{ itemId: "item-1", name: "Headphones", description: null, url: null }],
+          items: [{ itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 }],
         }),
       ),
     ).toBe(false);
@@ -604,6 +604,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -642,6 +643,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: "New description",
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -656,6 +658,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: "Old description",
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -672,6 +675,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -710,6 +714,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: null,
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -727,6 +732,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -764,6 +770,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: "New",
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -782,6 +789,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -819,6 +827,7 @@ describe("ListDetailOwnerPage", () => {
               name: "Headphones",
               description: null,
               url: null,
+              priority: 3,
             },
           ],
         }),
@@ -835,6 +844,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Noise-cancelling",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -857,7 +867,7 @@ describe("ListDetailOwnerPage", () => {
     // Arrange
     const giftList = aGiftList({
       items: [
-        { itemId: "item-1", name: "Headphones", description: null, url: null },
+        { itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 },
       ],
     });
     setState({ status: "ready", giftList });
@@ -878,7 +888,7 @@ describe("ListDetailOwnerPage", () => {
     // Arrange
     const giftList = aGiftList({
       items: [
-        { itemId: "item-1", name: "Headphones", description: null, url: null },
+        { itemId: "item-1", name: "Headphones", description: null, url: null, priority: 3 },
       ],
     });
     setState({ status: "ready", giftList });
@@ -907,6 +917,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Noise-cancelling",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -933,6 +944,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -964,6 +976,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -992,6 +1005,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -1023,12 +1037,14 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Old description",
           url: null,
+          priority: 3,
         },
         {
           itemId: "item-2",
           name: "Mug",
           description: null,
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -1075,6 +1091,7 @@ describe("ListDetailOwnerPage", () => {
           name: "Headphones",
           description: "Line one\nLine two",
           url: null,
+          priority: 3,
         },
       ],
     });
@@ -1183,7 +1200,7 @@ describe("ListDetailOwnerPage", () => {
       predicate(
         aGiftList({
           items: [
-            { itemId: "new-item", name: "x", description: null, url: null },
+            { itemId: "new-item", name: "x", description: null, url: null, priority: 3 },
           ],
         }),
       ),
@@ -1293,6 +1310,7 @@ describe("ListDetailOwnerPage", () => {
             name: "Headphones",
             description: null,
             url: "https://example.com/h",
+            priority: 3,
           },
         ],
       }),
@@ -1303,7 +1321,11 @@ describe("ListDetailOwnerPage", () => {
 
     // Assert
     const name = screen.getByText("Headphones");
-    expect(name.nextElementSibling).toBe(
+    // The priority badge sits between the name and the link, so a missing description leaves
+    // nothing else there.
+    const badge = name.nextElementSibling;
+    expect(badge).toHaveTextContent("Priority: Want");
+    expect(badge?.nextElementSibling).toBe(
       screen.getByRole("link", { name: "https://example.com/h" }),
     );
   });

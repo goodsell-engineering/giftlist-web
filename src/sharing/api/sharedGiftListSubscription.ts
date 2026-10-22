@@ -46,7 +46,7 @@ const SHARED_GIFT_LIST_CHANGED_SUBSCRIPTION = `
       listId
       name
       expiresAt
-      items { itemId name description url reserved }
+      items { itemId name description url reserved priority }
     }
   }
 `;

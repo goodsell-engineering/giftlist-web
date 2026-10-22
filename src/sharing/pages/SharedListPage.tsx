@@ -21,6 +21,7 @@ import {
 } from "../hooks/useReserveGift";
 import type { ReserveGiftErrorInfo } from "../api/reservationsErrors";
 import type { SharedGiftItem } from "../api/sharedGiftListQueries";
+import { PriorityBadge } from "../../giftlists/PriorityBadge";
 import { TopBar } from "../../ui/TopBar";
 import { LoadingScreen } from "../../ui/LoadingScreen";
 import { formatCalendarDate } from "../../ui/dates";
@@ -276,6 +277,9 @@ function SharedGiftItemRow({
               {item.description}
             </Text>
           )}
+          <Box>
+            <PriorityBadge priority={item.priority} />
+          </Box>
           {item.url && (
             <Anchor href={item.url} target="_blank" rel="noreferrer" size="xs">
               {item.url}

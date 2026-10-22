@@ -31,6 +31,8 @@ export interface SharedGiftItem {
    * what this field will never grow.
    */
   reserved: boolean;
+  /** 1 to 5, named by priorityLevels.ts. */
+  priority: number;
 }
 
 export interface SharedGiftListView {
@@ -49,7 +51,7 @@ const SHARED_GIFT_LIST_QUERY = `
       listId
       name
       expiresAt
-      items { itemId name description url reserved }
+      items { itemId name description url reserved priority }
     }
   }
 `;
