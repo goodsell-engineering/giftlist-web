@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, within } from "../../test/render";
+import { act, fireEvent, render, screen, within } from "../../test/render";
 import { elementsWithExactTextContent } from "../../test/textContent";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -100,6 +100,8 @@ function renderSharedListPage() {
 
 describe("SharedListPage", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     refetchMock.mockClear();
     fetchSharedGiftListMock.mockReset();
     subscribeMock.mockReset();
@@ -724,11 +726,42 @@ describe("SharedListPage", () => {
     const row = screen.getByText("Lamp").closest("li") as HTMLElement;
     // The last match is the innermost element, the badge text itself.
     const badge = elementsWithExactTextContent(row, "Priority: Want").at(-1) as Element;
+    // Every transport a request could leave by: browser fetch (GraphQL, gRPC-web) and sockets
+    // (GraphQL subscriptions). Spied after render so only the guest's interaction is counted.
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const socketSendSpy = vi.spyOn(WebSocket.prototype, "send");
+    const socketOpenSpy = vi.fn();
+    vi.stubGlobal(
+      "WebSocket",
+      Object.assign(function (this: unknown) { socketOpenSpy(); }, {
+        prototype: WebSocket.prototype,
+      }),
+    );
+    fetchSharedGiftListMock.mockClear();
+    subscribeMock.mockClear();
 
     // Act
     await userEvent.click(badge);
+    await userEvent.dblClick(badge);
+    await userEvent.hover(badge);
+    await userEvent.keyboard("{Enter}{ }{ArrowUp}{ArrowDown}");
+    // The badge is not focusable, so userEvent's keys land on the body; send them to the badge
+    // directly. Query it afresh: the row's nodes may have been replaced since the first click.
+    const liveBadge = elementsWithExactTextContent(
+      screen.getByText("Lamp").closest("li") as HTMLElement,
+      "Priority: Want",
+    ).at(-1) as Element;
+    for (const key of ["Enter", " ", "ArrowUp", "ArrowDown"]) {
+      fireEvent.keyDown(liveBadge, { key });
+      fireEvent.keyUp(liveBadge, { key });
+    }
 
     // Assert
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(socketSendSpy).not.toHaveBeenCalled();
+    expect(socketOpenSpy).not.toHaveBeenCalled();
+    expect(fetchSharedGiftListMock).not.toHaveBeenCalled();
+    expect(subscribeMock).not.toHaveBeenCalled();
     for (const role of ["combobox", "listbox", "radio", "textbox"]) {
       expect(within(row).queryByRole(role)).not.toBeInTheDocument();
     }
