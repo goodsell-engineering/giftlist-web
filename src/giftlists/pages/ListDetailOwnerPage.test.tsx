@@ -1363,7 +1363,7 @@ describe("ListDetailOwnerPage", () => {
     const giftList = aGiftList({
       expiresAt: new Date(Date.now() - 86_400_000).toISOString(),
       items: [
-        { itemId: "item-1", name: "Lamp", description: null, url: null, priority: 2 },
+        { itemId: "item-1", name: "Lamp", description: null, url: null, priority: 4 },
       ],
     });
     setState({ status: "ready", giftList });
@@ -1374,7 +1374,7 @@ describe("ListDetailOwnerPage", () => {
     // Assert
     const itemRow = screen.getByText("Lamp").closest("li") as HTMLElement;
     expect(
-      elementsWithExactTextContent(itemRow, "Priority: Would like").length,
+      elementsWithExactTextContent(itemRow, "Priority: Really want").length,
     ).toBeGreaterThan(0);
     for (const role of ["combobox", "listbox", "radio", "textbox"]) {
       expect(within(itemRow).queryByRole(role)).not.toBeInTheDocument();

@@ -668,7 +668,7 @@ describe("SharedListPage", () => {
     useSharedGiftListMock.mockImplementation(actual.useSharedGiftList);
     setReserveGift();
     fetchSharedGiftListMock.mockResolvedValue(
-      readyState([anItem({ itemId: "i1", name: "Lamp", priority: 2 })])
+      readyState([anItem({ itemId: "i1", name: "Lamp", priority: 3 })])
         .giftList,
     );
     let pushed: ((view: SharedGiftListView) => void) | null = null;
@@ -732,6 +732,7 @@ describe("SharedListPage", () => {
       expect(within(row).queryByRole(role)).not.toBeInTheDocument();
     }
     expect(reserveMock).not.toHaveBeenCalled();
+    expect(refetchMock).not.toHaveBeenCalled();
     expect(
       elementsWithExactTextContent(row, "Priority: Want").length,
     ).toBeGreaterThan(0);

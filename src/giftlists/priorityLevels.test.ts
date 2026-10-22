@@ -41,4 +41,15 @@ describe("priorityLevelName", () => {
       expect(result).toBe("Would love");
     },
   );
+
+  it.each([Number.NaN, undefined as unknown as number])(
+    "PriorityLevelName_ShouldReadAsWant_WhenTheValueIsNotAFiniteNumber (%s)",
+    (value) => {
+      // Act
+      const result = priorityLevelName(value);
+
+      // Assert
+      expect(result).toBe("Want");
+    },
+  );
 });
